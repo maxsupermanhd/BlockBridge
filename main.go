@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Tnze/go-mc/chat"
 	"github.com/bwmarrin/discordgo"
@@ -22,6 +25,7 @@ type botConf struct {
 	LogsMaxSize     int
 	CredentialsRoot string
 	MCUsername      string
+	ChannelID       string
 }
 
 var loadedConfig botConf
@@ -59,7 +63,16 @@ func main() {
 		log.Println("error creating Discord session,", err)
 		return
 	}
-	dg.AddHandler(messageCreate)
+	dtom := make(chan string, 64)
+	defer close(dtom)
+	// mtod := make(chan string, 64)
+	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		if m.Author.Bot || m.ChannelID != loadedConfig.ChannelID {
+			return
+		}
+		log.Printf("d->m [%v] [%v]", m.Author.Username, m.Content)
+		dtom <- fmt.Sprintf("[Discord] %v: %v", m.Author.Username, m.Content)
+	})
 	dg.Identify.Intents = discordgo.IntentsGuildMessages
 	err = dg.Open()
 	if err != nil {
@@ -68,8 +81,8 @@ func main() {
 	}
 	defer dg.Close()
 	log.Print("Connected to Discord.")
-}
-
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	log.Printf("Message from channel %v [%v]", m.ChannelID, m.Content)
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	<-sc
+	log.Println("Roger, stopping shit.")
 }
