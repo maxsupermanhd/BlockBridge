@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/bot/basic"
@@ -23,7 +24,7 @@ type botConf struct {
 	DiscordToken    string
 	AllowedSlash    []string
 	SpamInterval    int
-	SpamMessage     chat.Message
+	SpamMessage     string
 	LogsFilename    string
 	LogsMaxSize     int
 	CredentialsRoot string
@@ -113,7 +114,9 @@ func main() {
 			if uuid.String() == "00000000-0000-0000-0000-000000000000" {
 				return nil
 			}
-			log.Printf("%##v", c)
+			if uuid.String() == botauth.UUID {
+				return nil
+			}
 			mtod <- c.ClearString()
 			return nil
 		},
@@ -132,6 +135,21 @@ func main() {
 			client.Conn.WritePacket(pk.Marshal(
 				packetid.ServerboundChat,
 				pk.String(m),
+			))
+		}
+	}()
+	go func() {
+		spamtimer := time.NewTicker(time.Duration(loadedConfig.SpamInterval) * time.Second)
+		select {
+		case <-spamtimer.C:
+			client.Conn.WritePacket(pk.Marshal(
+				packetid.ServerboundChat,
+				pk.String(loadedConfig.SpamMessage),
+			))
+		case msg := <-dtom:
+			client.Conn.WritePacket(pk.Marshal(
+				packetid.ServerboundChat,
+				pk.String(msg),
 			))
 		}
 	}()
