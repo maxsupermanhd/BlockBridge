@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +10,8 @@ import (
 	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/bot/basic"
 	"github.com/Tnze/go-mc/chat"
+	"github.com/Tnze/go-mc/data/packetid"
+	pk "github.com/Tnze/go-mc/net/packet"
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
 	"github.com/maxsupermanhd/WebChunk/credentials"
@@ -93,20 +94,31 @@ func main() {
 		log.Fatal("botauth nil")
 	}
 	client.Auth = *botauth
+	_ = basic.NewPlayer(client, basic.Settings{
+		Locale:              "ru_RU",
+		ViewDistance:        15,
+		ChatMode:            0,
+		DisplayedSkinParts:  basic.Jacket | basic.LeftSleeve | basic.RightSleeve | basic.LeftPantsLeg | basic.RightPantsLeg | basic.Hat,
+		MainHand:            1,
+		EnableTextFiltering: false,
+		AllowListing:        false,
+		Brand:               "Pepe's chatbot",
+	})
 	basic.EventsListener{
 		GameStart: func() error {
 			mtod <- "Logged in"
 			return nil
 		},
 		ChatMsg: func(c chat.Message, pos byte, uuid uuid.UUID) error {
-			msg := c.Text
-			for _, em := range c.Extra {
-				msg += em.Text
+			if uuid.String() == "00000000-0000-0000-0000-000000000000" {
+				return nil
 			}
-			mtod <- msg
+			log.Printf("%##v", c)
+			mtod <- c.ClearString()
 			return nil
 		},
 		Disconnect: func(reason chat.Message) error {
+			log.Printf("Dissconnect: %s", reason.String())
 			return DisconnectErr{Reason: reason}
 		},
 		HealthChange: nil,
@@ -115,22 +127,16 @@ func main() {
 			return nil
 		},
 	}.Attach(client)
+	go func() {
+		for m := range dtom {
+			client.Conn.WritePacket(pk.Marshal(
+				packetid.ServerboundChat,
+				pk.String(m),
+			))
+		}
+	}()
 	must(client.JoinServer(loadedConfig.ServerAddress))
-	for {
-		if err = client.HandleGame(); err == nil {
-			panic("HandleGame never return nil")
-		}
-		if err2 := new(bot.PacketHandlerError); errors.As(err, err2) {
-			if err := new(DisconnectErr); errors.As(err2, err) {
-				log.Print("Disconnect: ", err.Reason)
-				return
-			} else {
-				log.Print(err2)
-			}
-		} else {
-			log.Fatal(err)
-		}
-	}
+	must(client.HandleGame())
 }
 
 type DisconnectErr struct {
