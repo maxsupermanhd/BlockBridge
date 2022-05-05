@@ -9,5 +9,8 @@
 		"text": "Pullingout owes me 5 phoenix shop kits!"
 	},
 	"LogsFilename": "logs/chatlog.log",
-	"LogsMaxSize": 10
+	"LogsMaxSize": 10,
+	"MCUsername": "FlexCoral",
+	"CredentialsRoot": "./cmd/auth/",
+	"ChannelID": "971660551463788557"
 }
