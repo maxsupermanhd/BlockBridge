@@ -1,0 +1,13 @@
+{
+	"ServerAddress": "phoenixanarchy.net",
+	"DiscordToken": "*snip*",
+	"AllowedSlash": [
+		"343418440423309314"
+	],
+	"SpamInterval": 60,
+	"SpamMessage": {
+		"text": "Pullingout owes me 5 phoenix shop kits!"
+	},
+	"LogsFilename": "logs/chatlog.log",
+	"LogsMaxSize": 10
+}
