@@ -110,6 +110,15 @@ func main() {
 	basic.EventsListener{
 		GameStart: func() error {
 			mtod <- "Logged in"
+			go func() {
+				for {
+					client.Conn.WritePacket(pk.Marshal(
+						packetid.ServerboundChat,
+						pk.String(loadedConfig.SpamMessage),
+					))
+					time.Sleep(time.Duration(loadedConfig.SpamInterval) * time.Second)
+				}
+			}()
 			return nil
 		},
 		ChatMsg: func(c chat.Message, pos byte, uuid uuid.UUID) error {
@@ -139,13 +148,7 @@ func main() {
 		}
 	}()
 	go func() {
-		spamtimer := time.NewTicker(time.Duration(loadedConfig.SpamInterval) * time.Second)
 		select {
-		case <-spamtimer.C:
-			client.Conn.WritePacket(pk.Marshal(
-				packetid.ServerboundChat,
-				pk.String(loadedConfig.SpamMessage),
-			))
 		case msg := <-dtom:
 			if len(msg) > 254 {
 				msg = msg[:254]
