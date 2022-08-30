@@ -6,11 +6,13 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/bot/basic"
 	"github.com/Tnze/go-mc/chat"
+	translations "github.com/Tnze/go-mc/data/lang/en-us"
 	"github.com/Tnze/go-mc/data/packetid"
 	pk "github.com/Tnze/go-mc/net/packet"
 	"github.com/bwmarrin/discordgo"
@@ -111,13 +113,11 @@ func main() {
 			return nil
 		},
 		ChatMsg: func(c chat.Message, pos byte, uuid uuid.UUID) error {
-			if uuid.String() == "00000000-0000-0000-0000-000000000000" {
+			msg := fixchat(c)
+			if strings.HasPrefix(msg, loadedConfig.MCUsername) {
 				return nil
 			}
-			if uuid.String() == botauth.UUID {
-				return nil
-			}
-			mtod <- c.ClearString()
+			mtod <- msg
 			return nil
 		},
 		Disconnect: func(reason chat.Message) error {
@@ -147,6 +147,9 @@ func main() {
 				pk.String(loadedConfig.SpamMessage),
 			))
 		case msg := <-dtom:
+			if len(msg) > 254 {
+				msg = msg[:254]
+			}
 			client.Conn.WritePacket(pk.Marshal(
 				packetid.ServerboundChat,
 				pk.String(msg),
@@ -163,4 +166,32 @@ type DisconnectErr struct {
 
 func (d DisconnectErr) Error() string {
 	return "disconnect: " + d.Reason.String()
+}
+func fixchat(m chat.Message) string {
+	var msg strings.Builder
+	text, _ := chat.TransCtrlSeq(m.Text, false)
+	msg.WriteString(text)
+
+	//handle translate
+	if m.Translate != "" {
+		args := make([]interface{}, len(m.With))
+		for i, v := range m.With {
+			var arg chat.Message
+			_ = arg.UnmarshalJSON(v) //ignore error
+			args[i] = arg.ClearString()
+		}
+		tr, ok := translations.Map[m.Translate]
+		if !ok {
+			_, _ = fmt.Fprintf(&msg, m.Translate, args...)
+		} else {
+			_, _ = fmt.Fprintf(&msg, tr, args...)
+		}
+	}
+
+	if m.Extra != nil {
+		for i := range m.Extra {
+			msg.WriteString(m.Extra[i].ClearString())
+		}
+	}
+	return msg.String()
 }
