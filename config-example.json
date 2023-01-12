@@ -1,0 +1,14 @@
+{
+	"ServerAddress": "constantiam.net",
+	"DiscordToken": "*snip*",
+	"DiscordAppID": "1062458709730664579",
+	"AllowedSlash": [
+		"343418440423309314"
+	],
+	"LogsFilename": "logs/chatlog.log",
+	"LogsMaxSize": 10,
+	"MCUsername": "Yokai0nTop",
+	"CredentialsRoot": "./cmd/auth/",
+	"ChannelID": "1062458485016645642",
+	"FontPath": "MinecraftRegular-Bmg3.ttf"
+}
