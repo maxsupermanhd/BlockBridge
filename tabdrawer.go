@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"image"
 	"image/color"
 	"io"
 	"sort"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Tnze/go-mc/chat"
 	pk "github.com/Tnze/go-mc/net/packet"
+	"github.com/disintegration/imaging"
 	"github.com/fogleman/gg"
 )
 
@@ -36,14 +38,6 @@ type renderFragment struct {
 	str   string
 	color color.Color
 	x, y  float64
-}
-
-func concatChat(msg chat.Message) string {
-	ret := msg.Text
-	for _, v := range msg.Extra {
-		ret += concatChat(v)
-	}
-	return ret
 }
 
 func measureChatLine(c *gg.Context, msg chat.Message) (ret bool, w, h float64) {
@@ -192,7 +186,8 @@ func drawTab(players map[pk.UUID]TabPlayer, tabtop, tabbottom *chat.Message) io.
 	c := gg.NewContext(int(tabw), int(tabh))
 	c.SetColor(color.RGBA{R: 0x36, G: 0x39, B: 0x3f, A: 0xff})
 	c.Clear()
-	c.LoadFontFace("MinecraftRegular-Bmg3.ttf", 28)
+	c.LoadFontFace(loadedConfig.FontPath, 28)
+	// c.LoadFontFace("Microsoft Yahei.ttf", 28)
 
 	_, lineh := c.MeasureString(" ")
 	topf := fragmentMessage(c, gg.AlignCenter, *tabtop, tabw/2, lineh+10)
@@ -238,6 +233,8 @@ func drawTab(players map[pk.UUID]TabPlayer, tabtop, tabbottom *chat.Message) io.
 			pw, _ := c.MeasureString(pings)
 			c.SetColor(getLatencyColor(pl.ping))
 			c.DrawString(pings, rowx+colw-pw, rowy+rowh-3)
+			head, _ := CropImage(pl.texture, image.Rect(8, 8, 16, 16))
+			c.DrawImage(imaging.Resize(head, int(rowh), int(rowh), imaging.NearestNeighbor), int(rowx), int(rowy))
 			plc++
 		}
 	}
@@ -250,4 +247,37 @@ func drawTab(players map[pk.UUID]TabPlayer, tabtop, tabbottom *chat.Message) io.
 	buf := bytes.NewBufferString("")
 	c.EncodePNG(buf)
 	return buf
+}
+
+func CropImage(img image.Image, cropRect image.Rectangle) (cropImg image.Image, newImg bool) {
+	//Interface for asserting whether `img`
+	//implements SubImage or not.
+	//This can be defined globally.
+	type CropableImage interface {
+		image.Image
+		SubImage(r image.Rectangle) image.Image
+	}
+
+	if p, ok := img.(CropableImage); ok {
+		// Call SubImage. This should be fast,
+		// since SubImage (usually) shares underlying pixel.
+		cropImg = p.SubImage(cropRect)
+	} else if cropRect = cropRect.Intersect(img.Bounds()); !cropRect.Empty() {
+		// If `img` does not implement `SubImage`,
+		// copy (and silently convert) the image portion to RGBA image.
+		rgbaImg := image.NewRGBA(cropRect)
+		for y := cropRect.Min.Y; y < cropRect.Max.Y; y++ {
+			for x := cropRect.Min.X; x < cropRect.Max.X; x++ {
+				rgbaImg.Set(x, y, img.At(x, y))
+			}
+		}
+		cropImg = rgbaImg
+		newImg = true
+	} else {
+		// Return an empty RGBA image
+		cropImg = &image.RGBA{}
+		newImg = true
+	}
+
+	return cropImg, newImg
 }

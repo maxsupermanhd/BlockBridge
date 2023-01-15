@@ -19,10 +19,15 @@ require (
 require (
 	github.com/Tnze/go-mc v1.19.2
 	github.com/bwmarrin/discordgo v0.26.1
+	github.com/disintegration/imaging v1.6.2
 	github.com/fogleman/gg v1.3.0
 	github.com/goki/freetype v0.0.0-20220119013949-7a161fd3728c
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
+	github.com/google/gxui v0.0.0-20151028112939-f85e0a97b3a4
 	github.com/google/uuid v1.3.0
+	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/maxsupermanhd/go-mc-ms-auth v0.0.0-20220223195356-5256511fc797
 	github.com/natefinch/lumberjack v2.0.0+incompatible
+	github.com/wcharczuk/go-chart v2.0.1+incompatible
+	github.com/wcharczuk/go-chart/v2 v2.1.0
 )

@@ -17,3 +17,4 @@
 logs/
 BlockBridge
 config.json
+db.sqlite3

@@ -1,12 +1,19 @@
 package main
 
 import (
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"log"
+	"math/rand"
+	"net/http"
 	"os"
 	"runtime/debug"
+	"time"
 
 	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/bot/basic"
@@ -15,6 +22,7 @@ import (
 	"github.com/Tnze/go-mc/data/packetid"
 	pk "github.com/Tnze/go-mc/net/packet"
 	"github.com/bwmarrin/discordgo"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
 	"github.com/natefinch/lumberjack"
 )
@@ -31,6 +39,8 @@ type botConf struct {
 	MCUsername      string
 	ChannelID       string
 	FontPath        string
+	DatabaseFile    string
+	AddPrefix       bool
 }
 
 var loadedConfig botConf
@@ -59,8 +69,9 @@ func loadConfig() {
 }
 
 type TabPlayer struct {
-	name string
-	ping int
+	name    string
+	ping    int
+	texture image.Image
 }
 
 func main() {
@@ -75,6 +86,10 @@ func main() {
 	tabtop := new(chat.Message)
 	tabbottom := new(chat.Message)
 	log.Println("Hello world")
+
+	db := noerr(sql.Open("sqlite3", loadedConfig.DatabaseFile))
+	db.Exec(`create table if not exists tps (whenlogged timestamp, tpsvalue float);`)
+
 	log.Print("Connecting to Discord...")
 	dg, err := discordgo.New("Bot " + loadedConfig.DiscordToken)
 	must(err)
@@ -86,22 +101,29 @@ func main() {
 			return
 		}
 		log.Printf("d->m [%v] [%v]", m.Author.Username, m.Content)
-		dtom <- fmt.Sprintf("[Discord] %v#%v: %v", m.Author.Username, m.Author.Discriminator, m.Content)
+		if loadedConfig.AddPrefix {
+			dtom <- fmt.Sprintf("[Discord] %v#%v: %v", m.Author.Username, m.Author.Discriminator, m.Content)
+		} else {
+			dtom <- m.Content
+		}
 	})
 	noerr(dg.ApplicationCommandCreate(loadedConfig.DiscordAppID, loadedConfig.DiscordGuildID, &discordgo.ApplicationCommand{
-		ID:                       "tabCommand",
-		ApplicationID:            loadedConfig.DiscordAppID,
-		GuildID:                  loadedConfig.DiscordGuildID,
-		Version:                  "1",
-		Type:                     discordgo.ChatApplicationCommand,
-		Name:                     "tab",
-		NameLocalizations:        &map[discordgo.Locale]string{},
-		DefaultPermission:        new(bool),
-		DefaultMemberPermissions: new(int64),
-		DMPermission:             new(bool),
-		Description:              "renders out tab",
-		DescriptionLocalizations: &map[discordgo.Locale]string{},
-		Options:                  []*discordgo.ApplicationCommandOption{},
+		ID:            "tabCommand",
+		ApplicationID: loadedConfig.DiscordAppID,
+		GuildID:       loadedConfig.DiscordGuildID,
+		Version:       "1",
+		Type:          discordgo.ChatApplicationCommand,
+		Name:          "tab",
+		Description:   "renders out tab",
+	}))
+	noerr(dg.ApplicationCommandCreate(loadedConfig.DiscordAppID, loadedConfig.DiscordGuildID, &discordgo.ApplicationCommand{
+		ID:            "tpsCommand",
+		ApplicationID: loadedConfig.DiscordAppID,
+		GuildID:       loadedConfig.DiscordGuildID,
+		Version:       "1",
+		Type:          discordgo.ChatApplicationCommand,
+		Name:          "tps",
+		Description:   "renders out tps chart",
 	}))
 	dg.Identify.Intents = discordgo.IntentsGuildMessages
 	err = dg.Open()
@@ -120,12 +142,6 @@ func main() {
 
 	client := bot.NewClient()
 	credman := credentials.NewMicrosoftCredentialsManager(loadedConfig.CredentialsRoot, "88650e7e-efee-4857-b9a9-cf580a00ef43")
-	botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
-	must(err)
-	if botauth == nil {
-		log.Fatal("botauth nil")
-	}
-	client.Auth = *botauth
 	pla := basic.NewPlayer(client, basic.Settings{
 		Locale:              "ru_RU",
 		ViewDistance:        15,
@@ -161,37 +177,99 @@ func main() {
 	})
 	go func() {
 		for msg := range dtom {
+			if len(msg) < 1 {
+				continue
+			}
 			if len(msg) > 254 {
 				msg = msg[:254]
 			}
-			msgman.SendMessage(msg)
+			if msg[0] == '/' {
+				// log.Println([]byte(msg[1:]))
+				client.Conn.WritePacket(pk.Marshal(packetid.ServerboundChatCommand,
+					pk.String(msg[1:]),              // command
+					pk.Long(time.Now().UnixMilli()), // instant
+					pk.Long(rand.Int63()),           // salt
+					pk.VarInt(0),                    // empty collection
+					pk.Boolean(false),               // signed preview
+					pk.VarInt(0),                    // last seen collection
+					pk.Boolean(false),               // no last received
+				))
+			} else {
+				msgman.SendMessage(msg)
+			}
+
 		}
 	}()
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			// msg := "People online: "
-			// for _, v := range tabplayers {
-			// 	msg += fmt.Sprintf("%s (%d) ", v.name, v.ping)
-			// }
 			img := drawTab(tabplayers, tabtop, tabbottom)
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					TTS:             false,
-					Content:         "",
-					Components:      []discordgo.MessageComponent{},
-					Embeds:          []*discordgo.MessageEmbed{},
-					AllowedMentions: &discordgo.MessageAllowedMentions{},
 					Files: []*discordgo.File{{
 						Name:        "tab.png",
 						ContentType: "image/png",
 						Reader:      img,
 					}},
-					Flags:    0,
-					Choices:  []*discordgo.ApplicationCommandOptionChoice{},
-					CustomID: "",
-					Title:    "",
 				},
+			})
+		},
+		"tps": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Rendering graph... Hold tight!",
+				},
+			})
+			grresp := make(chan io.Reader, 1)
+			go func() {
+				rows := noerr(db.Query(`select cast(whenlogged as int), tpsvalue from tps where whenlogged + 24*60*60 > unixepoch() order by whenlogged asc;`))
+				defer rows.Close()
+				tpsval := []time.Time{}
+				tpsn := []float64{}
+				for rows.Next() {
+					var (
+						when int64
+						tps  float64
+					)
+					must(rows.Scan(&when, &tps))
+					tpsunix := time.Unix(when, 0)
+					tpsavgs := float64(0)
+					tpsavgc := float64(0)
+					timeavg := 20
+					ticksavg := timeavg * 20
+					for i := len(tpsn); i > 0 && i+ticksavg < len(tpsn); i++ {
+						if tpsunix.Sub(tpsval[i]) > time.Duration(timeavg)*time.Second {
+							break
+						}
+						tpsavgc++
+						tpsavgs += tpsn[i]
+					}
+					tpsval = append(tpsval, tpsunix)
+					if tpsavgc > 0 {
+						tpsn = append(tpsn, tpsavgs/tpsavgc)
+					} else {
+						tpsn = append(tpsn, tps)
+					}
+				}
+				// tpsm := map[time.Time]float64{}
+				// for rows.Next() {
+				// 	var (
+				// 		when int64
+				// 		tps  float64
+				// 	)
+				// 	must(rows.Scan(&when, &tps))
+				// 	tpsm[time.Unix(when, 0)] = tps
+				// }
+				grresp <- drawTPS(tpsval, tpsn)
+			}()
+			img := <-grresp
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Files: []*discordgo.File{{
+					Name:        "tps.png",
+					ContentType: "image/png",
+					Reader:      img,
+				}},
 			})
 		},
 	}
@@ -209,6 +287,32 @@ func main() {
 			return nil
 		},
 	})
+	lastTimeUpdate := time.Now()
+	client.Events.AddListener(bot.PacketHandler{
+		ID:       packetid.ClientboundSetTime,
+		Priority: 20,
+		F: func(p pk.Packet) error {
+			var (
+				worldAge  pk.Long
+				timeOfDay pk.Long
+			)
+			must(p.Scan(&worldAge, &timeOfDay))
+			last := float32(time.Since(lastTimeUpdate).Milliseconds()) / float32(1000)
+			if last == 0 {
+				last = 1
+			}
+			since := float32(20) / last
+			if since < 0 {
+				since = 0
+			}
+			if since > 20 {
+				since = 20
+			}
+			lastTimeUpdate = time.Now()
+			noerr(db.Exec(`insert into tps (whenlogged, tpsvalue) values (unixepoch(), $1)`, since))
+			return nil
+		},
+	})
 	client.Events.AddListener(bot.PacketHandler{
 		ID:       packetid.ClientboundPlayerInfo,
 		Priority: 20,
@@ -220,9 +324,41 @@ func main() {
 				arr := []PlayerInfoAdd{}
 				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
 				for _, v := range arr {
+					// spew.Dump(v.props)
+					var teximg image.Image
+					teximg = nil
+					for _, vv := range v.props {
+						if vv.name == "textures" {
+							var tex map[string]interface{}
+							must(json.Unmarshal(noerr(base64.StdEncoding.DecodeString(string(vv.value))), &tex))
+							texx, ok := tex["textures"].(map[string]interface{})
+							if !ok {
+								continue
+							}
+							texxx, ok := texx["SKIN"].(map[string]interface{})
+							if !ok {
+								continue
+							}
+							texurl, ok := texxx["url"].(string)
+							if !ok {
+								continue
+							}
+							textureresp, err := http.Get(texurl)
+							if err != nil {
+								log.Println("Error fetching ", texurl, err)
+								continue
+							}
+							teximg, err = png.Decode(textureresp.Body)
+							if err != nil {
+								log.Println("Error decoding ", texurl, err)
+								continue
+							}
+						}
+					}
 					tabplayers[v.uuid] = TabPlayer{
-						name: string(v.name),
-						ping: int(v.ping),
+						name:    string(v.name),
+						ping:    int(v.ping),
+						texture: teximg,
 					}
 					// log.Printf("%#v: {\"%s\", %d},\n", v.uuid, v.name, v.ping)
 				}
@@ -252,51 +388,31 @@ func main() {
 			return nil
 		},
 	})
-	must(client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
-		Dialer:      nil,
-		Context:     nil,
-		NoPublicKey: true,
-		KeyPair:     nil,
-	}))
-	must(client.HandleGame())
+	for {
+		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
+		must(err)
+		if botauth == nil {
+			log.Fatal("botauth nil")
+		}
+		client.Auth = *botauth
+		err = client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
+			Dialer:      nil,
+			Context:     nil,
+			NoPublicKey: true,
+			KeyPair:     nil,
+		})
+		if err != nil {
+			mtod <- "Failed to join server: " + err.Error()
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		err = client.HandleGame()
+		if err != nil {
+			mtod <- "Disconnected: " + err.Error()
+			time.Sleep(10 * time.Second)
+		}
+	}
 	// sigchan := make(chan os.Signal, 1)
 	// signal.Notify(sigchan, os.Interrupt)
 	// <-sigchan
 }
-
-type DisconnectErr struct {
-	Reason chat.Message
-}
-
-func (d DisconnectErr) Error() string {
-	return "disconnect: " + d.Reason.String()
-}
-
-// func fixchat(m chat.Message) string {
-// 	var msg strings.Builder
-// 	text, _ := chat.TransCtrlSeq(m.Text, false)
-// 	msg.WriteString(text)
-
-// 	//handle translate
-// 	if m.Translate != "" {
-// 		args := make([]interface{}, len(m.With))
-// 		for i, v := range m.With {
-// 			var arg chat.Message
-// 			_ = arg.UnmarshalJSON(v) //ignore error
-// 			args[i] = arg.ClearString()
-// 		}
-// 		tr, ok := translations.Map[m.Translate]
-// 		if !ok {
-// 			_, _ = fmt.Fprintf(&msg, m.Translate, args...)
-// 		} else {
-// 			_, _ = fmt.Fprintf(&msg, tr, args...)
-// 		}
-// 	}
-
-// 	if m.Extra != nil {
-// 		for i := range m.Extra {
-// 			msg.WriteString(m.Extra[i].ClearString())
-// 		}
-// 	}
-// 	return msg.String()
-// }
