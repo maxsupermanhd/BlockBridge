@@ -40,6 +40,28 @@ type renderFragment struct {
 	x, y  float64
 }
 
+func concatChatMessage(msg chat.Message) string {
+	ret := msg.Text
+	for _, e := range msg.Extra {
+		ret += concatChatMessage(e)
+	}
+	return ret
+}
+
+func measureMaxLine(c *gg.Context, msg chat.Message) (w, h float64) {
+	for _, s := range strings.Split(concatChatMessage(msg), "\n") {
+		// if len(strings.ReplaceAll(s, " ", "")) == 0 {
+		// 	continue
+		// }
+		ww, hh := c.MeasureString(s)
+		if w < ww {
+			w = ww
+		}
+		h += hh + 3
+	}
+	return
+}
+
 func measureChatLine(c *gg.Context, msg chat.Message) (ret bool, w, h float64) {
 	strs := strings.Split(msg.Text, "\n")
 	w, h = c.MeasureString(strs[0])
@@ -166,8 +188,16 @@ func getLatencyColor(ping int) color.Color {
 	}
 }
 
+var (
+	mctx = gg.NewContext(500, 500)
+)
+
 func drawTab(players map[pk.UUID]TabPlayer, tabtop, tabbottom *chat.Message) io.Reader {
 	maxRows := 20
+	colxspacing := float64(6)
+	rowyspacing := float64(1)
+	toppadding := float64(10)
+
 	cols := len(players) / maxRows
 	if len(players)%maxRows != 0 {
 		cols++
@@ -181,16 +211,36 @@ func drawTab(players map[pk.UUID]TabPlayer, tabtop, tabbottom *chat.Message) io.
 		return strings.Compare(players[keys[i]].name, players[keys[j]].name) < 0
 	})
 
-	tabw := float64(400 + cols*250)
-	tabh := float64(750)
+	fontsize := float64(31)
+	mctx.LoadFontFace(loadedConfig.FontPath, fontsize)
+	pmw, pmh := float64(0), float64(0)
+	for _, v := range players {
+		w, h := mctx.MeasureString(fmt.Sprint(v.name, v.ping, "    ms"))
+		if pmw < w {
+			pmw = w
+		}
+		if pmh < h {
+			pmh = h
+		}
+	}
+	tabw := float64(float64(cols)*(pmw+pmh+colxspacing) + 16)
+	tabtopw, tabtoph := measureMaxLine(mctx, *tabtop)
+	tabbottomw, tabbottomh := measureMaxLine(mctx, *tabbottom)
+	_, lineh := mctx.MeasureString(" ")
+	if tabw < tabtopw {
+		tabw = tabtopw + 16
+	}
+	if tabw < tabbottomw {
+		tabw = tabbottomw + 16
+	}
+
+	tabh := (lineh + toppadding) + tabtoph + tabbottomh + (rowyspacing+lineh)*(float64(maxRows)) + 16 + lineh*2
 	c := gg.NewContext(int(tabw), int(tabh))
 	c.SetColor(color.RGBA{R: 0x36, G: 0x39, B: 0x3f, A: 0xff})
 	c.Clear()
-	c.LoadFontFace(loadedConfig.FontPath, 28)
-	// c.LoadFontFace("Microsoft Yahei.ttf", 28)
+	c.LoadFontFace(loadedConfig.FontPath, fontsize)
 
-	_, lineh := c.MeasureString(" ")
-	topf := fragmentMessage(c, gg.AlignCenter, *tabtop, tabw/2, lineh+10)
+	topf := fragmentMessage(c, gg.AlignCenter, *tabtop, tabw/2, lineh+toppadding)
 	topmy := float64(0)
 	for _, f := range topf {
 		c.SetColor(f.color)
@@ -200,21 +250,8 @@ func drawTab(players map[pk.UUID]TabPlayer, tabtop, tabbottom *chat.Message) io.
 		}
 	}
 
-	pmw, pmh := float64(0), float64(0)
-	for _, v := range players {
-		w, h := c.MeasureString(fmt.Sprint(v.name, v.ping, "   ms"))
-		if pmw < w {
-			pmw = w
-		}
-		if pmh < h {
-			pmh = h
-		}
-	}
-
 	plc := 0
-	colxspacing := float64(6)
 	colw := pmw + pmh
-	rowyspacing := float64(1)
 	rowh := pmh + 4
 	for col := 0; col < cols; col++ {
 		for row := 0; row < maxRows; row++ {
@@ -223,7 +260,7 @@ func drawTab(players map[pk.UUID]TabPlayer, tabtop, tabbottom *chat.Message) io.
 			}
 			pl := players[keys[plc]]
 			c.SetColor(color.RGBA{0, 0, 0, 150})
-			rowx := tabw/2 - (float64(cols)*(colw+colxspacing))/2 + float64(col)*(colw+colxspacing)
+			rowx := tabw/2 - (float64(cols)*(colw+colxspacing))/2 + float64(col)*(colw+colxspacing) + colxspacing/2
 			rowy := topmy + lineh + float64(row)*(rowh+rowyspacing)
 			c.DrawRectangle(rowx, rowy, colw, rowh)
 			c.Fill()
