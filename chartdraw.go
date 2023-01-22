@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"log"
 	"time"
 
 	chart "github.com/wcharczuk/go-chart/v2"
@@ -10,6 +11,19 @@ import (
 )
 
 func drawTPS(keys []time.Time, values []float64) io.Reader {
+
+	TPSseries := chart.TimeSeries{
+		XValues: keys,
+		YValues: values,
+		Name:    "TPS",
+	}
+
+	AvgTPSseries := chart.SMASeries{
+		InnerSeries: TPSseries,
+		Period:      20 * 60,
+		Name:        "Average TPS",
+		Style:       chart.Style{StrokeWidth: 5},
+	}
 
 	graph := chart.Chart{
 		XAxis: chart.XAxis{
@@ -44,16 +58,17 @@ func drawTPS(keys []time.Time, values []float64) io.Reader {
 			},
 		},
 		Series: []chart.Series{
-			chart.TimeSeries{
-				XValues: keys,
-				YValues: values,
-			},
+			TPSseries,
+			AvgTPSseries,
 		},
 		Background: chart.Style{Padding: chart.Box{Top: 50}},
 		Title:      "Constantiam TPS for around past 24h",
 		Height:     500,
 	}
 	buf := bytes.NewBufferString("")
-	must(graph.Render(chart.PNG, buf))
+	err := graph.Render(chart.PNG, buf)
+	if err != nil {
+		log.Println(err)
+	}
 	return buf
 }

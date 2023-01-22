@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -11,7 +10,6 @@ import (
 	"io"
 	"log"
 	"math/rand"
-	"net/http"
 	"os"
 	"runtime/debug"
 	"time"
@@ -360,36 +358,36 @@ func main() {
 					// spew.Dump(v.props)
 					var headimg image.Image
 					headimg = nil
-					for _, vv := range v.props {
-						if vv.name == "textures" {
-							var tex map[string]interface{}
-							must(json.Unmarshal(noerr(base64.StdEncoding.DecodeString(string(vv.value))), &tex))
-							texx, ok := tex["textures"].(map[string]interface{})
-							if !ok {
-								continue
-							}
-							texxx, ok := texx["SKIN"].(map[string]interface{})
-							if !ok {
-								continue
-							}
-							texurl, ok := texxx["url"].(string)
-							if !ok {
-								continue
-							}
-							log.Println("GET ", texurl)
-							textureresp, err := http.Get(texurl)
-							if err != nil {
-								log.Println("Error fetching ", texurl, err)
-								continue
-							}
-							teximg, err := png.Decode(textureresp.Body)
-							if err != nil {
-								log.Println("Error decoding ", texurl, err)
-								continue
-							}
-							headimg, _ = CropImage(teximg, image.Rect(8, 8, 16, 16))
-						}
-					}
+					// for _, vv := range v.props {
+					// 	if vv.name == "textures" {
+					// 		var tex map[string]interface{}
+					// 		must(json.Unmarshal(noerr(base64.StdEncoding.DecodeString(string(vv.value))), &tex))
+					// 		texx, ok := tex["textures"].(map[string]interface{})
+					// 		if !ok {
+					// 			continue
+					// 		}
+					// 		texxx, ok := texx["SKIN"].(map[string]interface{})
+					// 		if !ok {
+					// 			continue
+					// 		}
+					// 		texurl, ok := texxx["url"].(string)
+					// 		if !ok {
+					// 			continue
+					// 		}
+					// 		log.Println("GET ", texurl)
+					// 		textureresp, err := http.Get(texurl)
+					// 		if err != nil {
+					// 			log.Println("Error fetching ", texurl, err)
+					// 			continue
+					// 		}
+					// 		teximg, err := png.Decode(textureresp.Body)
+					// 		if err != nil {
+					// 			log.Println("Error decoding ", texurl, err)
+					// 			continue
+					// 		}
+					// 		headimg, _ = CropImage(teximg, image.Rect(8, 8, 16, 16))
+					// 	}
+					// }
 					tabplayers[uuid.UUID(v.uuid)] = tabdrawer.TabPlayer{
 						Name:        string(v.name),
 						Ping:        int(v.ping),
