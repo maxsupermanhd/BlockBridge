@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -22,8 +23,11 @@ import (
 	"github.com/Tnze/go-mc/data/packetid"
 	pk "github.com/Tnze/go-mc/net/packet"
 	"github.com/bwmarrin/discordgo"
+	"github.com/golang/freetype/truetype"
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
+	"github.com/maxsupermanhd/tabdrawer"
 	"github.com/natefinch/lumberjack"
 )
 
@@ -68,12 +72,6 @@ func loadConfig() {
 	must(err)
 }
 
-type TabPlayer struct {
-	name    string
-	ping    int
-	texture image.Image
-}
-
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	loadConfig()
@@ -82,7 +80,7 @@ func main() {
 		MaxSize:  loadedConfig.LogsMaxSize,
 		Compress: true,
 	}))
-	tabplayers := map[pk.UUID]TabPlayer{}
+	tabplayers := map[uuid.UUID]tabdrawer.TabPlayer{}
 	tabtop := new(chat.Message)
 	tabbottom := new(chat.Message)
 	log.Println("Hello world")
@@ -94,7 +92,10 @@ func main() {
 	dg, err := discordgo.New("Bot " + loadedConfig.DiscordToken)
 	must(err)
 	dg.Identify.Intents |= discordgo.IntentMessageContent
-	dtom := make(chan string, 64)
+	dtom := make(chan struct {
+		msg    string
+		userid string
+	}, 64)
 	defer close(dtom)
 	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if m.Author.Bot || m.ChannelID != loadedConfig.ChannelID {
@@ -102,9 +103,21 @@ func main() {
 		}
 		log.Printf("d->m [%v] [%v]", m.Author.Username, m.Content)
 		if loadedConfig.AddPrefix {
-			dtom <- fmt.Sprintf("[Discord] %v#%v: %v", m.Author.Username, m.Author.Discriminator, m.Content)
+			dtom <- struct {
+				msg    string
+				userid string
+			}{
+				msg:    fmt.Sprintf("[Discord] %v#%v: %v", m.Author.Username, m.Author.Discriminator, m.Content),
+				userid: m.Author.ID,
+			}
 		} else {
-			dtom <- m.Content
+			dtom <- struct {
+				msg    string
+				userid string
+			}{
+				msg:    m.Content,
+				userid: m.Author.ID,
+			}
 		}
 	})
 	noerr(dg.ApplicationCommandCreate(loadedConfig.DiscordAppID, loadedConfig.DiscordGuildID, &discordgo.ApplicationCommand{
@@ -176,40 +189,59 @@ func main() {
 		},
 	})
 	go func() {
-		for msg := range dtom {
-			if len(msg) < 1 {
+		for m := range dtom {
+			if len(m.msg) < 1 {
 				continue
 			}
-			if len(msg) > 254 {
-				msg = msg[:254]
+			if len(m.msg) > 254 {
+				m.msg = m.msg[:254]
 			}
-			if msg[0] == '/' {
-				// log.Println([]byte(msg[1:]))
-				client.Conn.WritePacket(pk.Marshal(packetid.ServerboundChatCommand,
-					pk.String(msg[1:]),              // command
-					pk.Long(time.Now().UnixMilli()), // instant
-					pk.Long(rand.Int63()),           // salt
-					pk.VarInt(0),                    // empty collection
-					pk.Boolean(false),               // signed preview
-					pk.VarInt(0),                    // last seen collection
-					pk.Boolean(false),               // no last received
-				))
+			if m.msg[0] == '/' {
+				allowedsend := false
+				for _, allowedid := range loadedConfig.AllowedSlash {
+					if m.userid == allowedid {
+						allowedsend = true
+						break
+					}
+				}
+				if allowedsend {
+					// log.Println([]byte(m[1:]))
+					client.Conn.WritePacket(pk.Marshal(packetid.ServerboundChatCommand,
+						pk.String(m.msg[1:]),            // command
+						pk.Long(time.Now().UnixMilli()), // instant
+						pk.Long(rand.Int63()),           // salt
+						pk.VarInt(0),                    // empty collection
+						pk.Boolean(false),               // signed preview
+						pk.VarInt(0),                    // last seen collection
+						pk.Boolean(false),               // no last received
+					))
+				}
 			} else {
-				msgman.SendMessage(msg)
+				msgman.SendMessage(m.msg)
 			}
 
 		}
 	}()
+
+	tabparams := tabdrawer.TabParameters{
+		Font:                truetype.NewFace(noerr(truetype.Parse(noerr(os.ReadFile("./MinecraftRegular-Bmg3.ttf")))), &truetype.Options{Size: 32}),
+		ColumnSpacing:       8,
+		RowSpacing:          1,
+		RowAdditionalHeight: 2,
+	}
+
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			img := drawTab(tabplayers, tabtop, tabbottom)
+			img := tabdrawer.DrawTab(tabplayers, tabtop, tabbottom, &tabparams)
+			buff := bytes.NewBufferString("")
+			must(png.Encode(buff, img))
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Files: []*discordgo.File{{
 						Name:        "tab.png",
 						ContentType: "image/png",
-						Reader:      img,
+						Reader:      buff,
 					}},
 				},
 			})
@@ -284,6 +316,7 @@ func main() {
 		F: func(p pk.Packet) error {
 			must(p.Scan(tabtop, tabbottom))
 			// log.Println(string(noerr(tabtop.MarshalJSON())))
+			// log.Println(string(noerr(tabbottom.MarshalJSON())))
 			return nil
 		},
 	})
@@ -325,8 +358,8 @@ func main() {
 				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
 				for _, v := range arr {
 					// spew.Dump(v.props)
-					var teximg image.Image
-					teximg = nil
+					var headimg image.Image
+					headimg = nil
 					for _, vv := range v.props {
 						if vv.name == "textures" {
 							var tex map[string]interface{}
@@ -343,22 +376,24 @@ func main() {
 							if !ok {
 								continue
 							}
+							log.Println("GET ", texurl)
 							textureresp, err := http.Get(texurl)
 							if err != nil {
 								log.Println("Error fetching ", texurl, err)
 								continue
 							}
-							teximg, err = png.Decode(textureresp.Body)
+							teximg, err := png.Decode(textureresp.Body)
 							if err != nil {
 								log.Println("Error decoding ", texurl, err)
 								continue
 							}
+							headimg, _ = CropImage(teximg, image.Rect(8, 8, 16, 16))
 						}
 					}
-					tabplayers[v.uuid] = TabPlayer{
-						name:    string(v.name),
-						ping:    int(v.ping),
-						texture: teximg,
+					tabplayers[uuid.UUID(v.uuid)] = tabdrawer.TabPlayer{
+						Name:        string(v.name),
+						Ping:        int(v.ping),
+						HeadTexture: headimg,
 					}
 					// log.Printf("%#v: {\"%s\", %d},\n", v.uuid, v.name, v.ping)
 				}
@@ -368,10 +403,10 @@ func main() {
 				arr := []PlayerInfoUpdatePing{}
 				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
 				for _, v := range arr {
-					t, ok := tabplayers[v.uuid]
+					t, ok := tabplayers[uuid.UUID(v.uuid)]
 					if ok {
-						t.ping = int(v.ping)
-						tabplayers[v.uuid] = t
+						t.Ping = int(v.ping)
+						tabplayers[uuid.UUID(v.uuid)] = t
 					}
 				}
 			case 3:
@@ -379,9 +414,9 @@ func main() {
 				arr := []pk.UUID{}
 				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
 				for _, v := range arr {
-					_, ok := tabplayers[v]
+					_, ok := tabplayers[uuid.UUID(v)]
 					if ok {
-						delete(tabplayers, v)
+						delete(tabplayers, uuid.UUID(v))
 					}
 				}
 			}
@@ -415,4 +450,37 @@ func main() {
 	// sigchan := make(chan os.Signal, 1)
 	// signal.Notify(sigchan, os.Interrupt)
 	// <-sigchan
+}
+
+func CropImage(img image.Image, cropRect image.Rectangle) (cropImg image.Image, newImg bool) {
+	//Interface for asserting whether `img`
+	//implements SubImage or not.
+	//This can be defined globally.
+	type CropableImage interface {
+		image.Image
+		SubImage(r image.Rectangle) image.Image
+	}
+
+	if p, ok := img.(CropableImage); ok {
+		// Call SubImage. This should be fast,
+		// since SubImage (usually) shares underlying pixel.
+		cropImg = p.SubImage(cropRect)
+	} else if cropRect = cropRect.Intersect(img.Bounds()); !cropRect.Empty() {
+		// If `img` does not implement `SubImage`,
+		// copy (and silently convert) the image portion to RGBA image.
+		rgbaImg := image.NewRGBA(cropRect)
+		for y := cropRect.Min.Y; y < cropRect.Max.Y; y++ {
+			for x := cropRect.Min.X; x < cropRect.Max.X; x++ {
+				rgbaImg.Set(x, y, img.At(x, y))
+			}
+		}
+		cropImg = rgbaImg
+		newImg = true
+	} else {
+		// Return an empty RGBA image
+		cropImg = &image.RGBA{}
+		newImg = true
+	}
+
+	return cropImg, newImg
 }
