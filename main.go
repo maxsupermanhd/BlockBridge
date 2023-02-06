@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -144,10 +145,16 @@ func main() {
 	defer dg.Close()
 
 	mtod := make(chan string, 64)
+	mtods := make(chan discordgo.MessageSend, 64)
 	go func() {
 		for msg := range mtod {
 			log.Printf("m->d [%v]", msg)
 			dg.ChannelMessageSend(loadedConfig.ChannelID, msg)
+		}
+	}()
+	go func() {
+		for msg := range mtods {
+			dg.ChannelMessageSendComplex(loadedConfig.ChannelID, &msg)
 		}
 	}()
 	log.Print("Connected to Discord.")
@@ -395,10 +402,36 @@ func main() {
 						Ping:        int(v.ping),
 						HeadTexture: headimg,
 					}
-					// log.Printf("%#v: {\"%s\", %d},\n", v.uuid, v.name, v.ping)
+					log.Printf("Player join %v %v", uuidToString(v.uuid), v.name)
 				}
 			case 1:
-				// arr := []PlayerInfoUpdateGamemode{}
+				arr := []PlayerInfoUpdateGamemode{}
+				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
+				gmodes := []string{"Survival", "Creative", "Adventure", "Spectator"}
+				for _, v := range arr {
+					if v.gamemode < 0 || v.gamemode > 3 {
+						log.Printf("Overflow of the gamemode update: %#v", v)
+						continue
+					}
+					if v.gamemode != 1 {
+						mtods <- discordgo.MessageSend{
+							Content:    fmt.Sprintf("Player %v changed game mode to %v", uuidToString(v.uuid), gmodes[v.gamemode]),
+							Embeds:     []*discordgo.MessageEmbed{},
+							TTS:        false,
+							Components: []discordgo.MessageComponent{},
+							Files:      []*discordgo.File{},
+							AllowedMentions: &discordgo.MessageAllowedMentions{
+								Parse:       []discordgo.AllowedMentionType{},
+								Roles:       []string{},
+								Users:       []string{"343418440423309314"},
+								RepliedUser: false,
+							},
+							Reference: &discordgo.MessageReference{},
+							File:      &discordgo.File{},
+							Embed:     &discordgo.MessageEmbed{},
+						}
+					}
+				}
 			case 2:
 				arr := []PlayerInfoUpdatePing{}
 				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
@@ -407,16 +440,31 @@ func main() {
 					if ok {
 						t.Ping = int(v.ping)
 						tabplayers[uuid.UUID(v.uuid)] = t
+						// log.Printf("Ping update for the player %v %5d %v", uuidToString(v.uuid), v.ping, t.Name)
+					} else {
+						log.Printf("Ping update of the player that is not in the tab!!! %#v", v)
 					}
 				}
 			case 3:
+				arr := []PlayerInfoUpdateDisplayName{}
+				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
+				for _, v := range arr {
+					t, ok := tabplayers[uuid.UUID(v.uuid)]
+					if ok {
+						t.Name = v.displayname.ClearString()
+					}
+				}
+				// Update display name
 			case 4:
 				arr := []pk.UUID{}
 				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
 				for _, v := range arr {
-					_, ok := tabplayers[uuid.UUID(v)]
+					tt, ok := tabplayers[uuid.UUID(v)]
 					if ok {
+						log.Printf("Player leave %v %v", uuidToString(v), tt.Name)
 						delete(tabplayers, uuid.UUID(v))
+					} else {
+						log.Printf("Delete of the player that is not in the tab!!! %#v", uuidToString(v))
 					}
 				}
 			}
@@ -424,6 +472,9 @@ func main() {
 		},
 	})
 	for {
+		for k := range tabplayers {
+			delete(tabplayers, k)
+		}
 		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
 		must(err)
 		if botauth == nil {
@@ -483,4 +534,22 @@ func CropImage(img image.Image, cropRect image.Rectangle) (cropImg image.Image, 
 	}
 
 	return cropImg, newImg
+}
+
+func uuidToString(uuid [16]byte) string {
+	var buf [36]byte
+	encodeUUIDToHex(buf[:], uuid)
+	return string(buf[:])
+}
+
+func encodeUUIDToHex(dst []byte, uuid [16]byte) {
+	hex.Encode(dst[:], uuid[:4])
+	dst[8] = '-'
+	hex.Encode(dst[9:13], uuid[4:6])
+	dst[13] = '-'
+	hex.Encode(dst[14:18], uuid[6:8])
+	dst[18] = '-'
+	hex.Encode(dst[19:23], uuid[8:10])
+	dst[23] = '-'
+	hex.Encode(dst[24:], uuid[10:])
 }
