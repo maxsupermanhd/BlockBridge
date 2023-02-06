@@ -22,14 +22,12 @@ github.com/mattn/go-colorable v0.1.8/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope
 github.com/mattn/go-isatty v0.0.12/go.mod h1:cbi8OIDigv2wuxKPP5vlRcQ1OAZbq2CE4Kysco4FUpU=
 github.com/mattn/go-sqlite3 v1.14.16 h1:yOQRA0RpS5PFz/oikGwBEqvAWhWg5ufRz4ETLjwpU1Y=
 github.com/mattn/go-sqlite3 v1.14.16/go.mod h1:2eHXhiwb8IkHr+BDWZGa96P6+rkvnG63S2DGjv9HUNg=
-github.com/maxsupermanhd/WebChunk v0.0.0-20221122133514-eed208ae69bd h1:XrCi7xXWZnApNbnsKv5Q52VC6GmfvZ/bHgIFFRFFUHA=
-github.com/maxsupermanhd/WebChunk v0.0.0-20221122133514-eed208ae69bd/go.mod h1:njCC/TtvfJIbcPjyVYbq6Vk2Fs1uRcNyW4m9H2IKlDM=
+github.com/maxsupermanhd/WebChunk v0.0.0-20230131180227-4ebd646d3ea8 h1:YoiTNBOiCLFxESIwLcvLR4jMnCzQrKbtTo/hxvoEmEQ=
+github.com/maxsupermanhd/WebChunk v0.0.0-20230131180227-4ebd646d3ea8/go.mod h1:tV0hEnfCxJB6P5oi4my/Hs4Qvf0FVQIpczzwvp3hT04=
 github.com/maxsupermanhd/go-mc-ms-auth v0.0.0-20220223195356-5256511fc797 h1:Jipsapvs1Fq++OK7SMWqEKot/QOzYYHWF5JhCS+dZ7Y=
 github.com/maxsupermanhd/go-mc-ms-auth v0.0.0-20220223195356-5256511fc797/go.mod h1:WBS+Mq/0VBXcKmXH5/DSok3dsvlNrFvSyq5cjHDA3sw=
-github.com/maxsupermanhd/tabdrawer v0.0.0-20230120154822-ebab04af1d4c h1:ybv2anGeje7QpulMBxKW6ahyYLG6aEDVE8NamVFXSqU=
-github.com/maxsupermanhd/tabdrawer v0.0.0-20230120154822-ebab04af1d4c/go.mod h1:N9PxuCW1H2RlKjxWEb9Kmn/qds3rCwvjx80I4Qr2xmA=
-github.com/maxsupermanhd/tabdrawer v0.0.0-20230120160113-f9a7a7b5becb h1:WGLa4q7NQ9cyZ09gxrIZlBJVfF6yG6cpkZ/4sjUgf9o=
-github.com/maxsupermanhd/tabdrawer v0.0.0-20230120160113-f9a7a7b5becb/go.mod h1:N9PxuCW1H2RlKjxWEb9Kmn/qds3rCwvjx80I4Qr2xmA=
+github.com/maxsupermanhd/tabdrawer v0.0.0-20230206222805-6f68286e9fba h1:DMQygNQoRckNn2TSB9LhV8UddNpQAa7G3TG38PaXmx8=
+github.com/maxsupermanhd/tabdrawer v0.0.0-20230206222805-6f68286e9fba/go.mod h1:BNv2KpSW4DBn9pSxQm6NcH+J/Po71DRmDu19Ja9DCwQ=
 github.com/natefinch/lumberjack v2.0.0+incompatible h1:4QJd3OLAMgj7ph+yZTuX13Ld4UpgHp07nNdFX7mqFfM=
 github.com/natefinch/lumberjack v2.0.0+incompatible/go.mod h1:Wi9p2TTF5DG5oU+6YfsmYQpsTIOm0B1VNzQg9Mw6nPk=
 github.com/wcharczuk/go-chart/v2 v2.1.0 h1:tY2slqVQ6bN+yHSnDYwZebLQFkphK4WNrVwnt7CJZ2I=
@@ -69,7 +67,5 @@ golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGm
 golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
 golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
-gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/natefinch/lumberjack.v2 v2.0.0 h1:1Lc07Kr7qY4U2YPouBjpCLxpiyxIVoxqXgkXLknAOE8=
 gopkg.in/yaml.v2 v2.4.0 h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=
-gopkg.in/yaml.v2 v2.4.0/go.mod h1:RDklbk79AGWmwhnvt/jBztapEOGDOx6ZbXqjP6csGnQ=

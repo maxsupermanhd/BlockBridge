@@ -2,7 +2,7 @@ module github.com/maxsupermanhd/BlockBridge
 
 go 1.18
 
-require github.com/maxsupermanhd/WebChunk v0.0.0-20221122133514-eed208ae69bd
+require github.com/maxsupermanhd/WebChunk v0.0.0-20230131180227-4ebd646d3ea8
 
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
@@ -12,7 +12,6 @@ require (
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/image v0.3.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 require (
@@ -22,7 +21,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/maxsupermanhd/go-mc-ms-auth v0.0.0-20220223195356-5256511fc797
-	github.com/maxsupermanhd/tabdrawer v0.0.0-20230120160113-f9a7a7b5becb
+	github.com/maxsupermanhd/tabdrawer v0.0.0-20230206222805-6f68286e9fba
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/wcharczuk/go-chart/v2 v2.1.0
 )

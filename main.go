@@ -398,7 +398,7 @@ func main() {
 						}
 					}
 					tabplayers[uuid.UUID(v.uuid)] = tabdrawer.TabPlayer{
-						Name:        string(v.name),
+						Name:        chat.Message{Text: string(v.name)},
 						Ping:        int(v.ping),
 						HeadTexture: headimg,
 					}
@@ -451,10 +451,9 @@ func main() {
 				for _, v := range arr {
 					t, ok := tabplayers[uuid.UUID(v.uuid)]
 					if ok {
-						t.Name = v.displayname.ClearString()
+						t.Name = *v.displayname
 					}
 				}
-				// Update display name
 			case 4:
 				arr := []pk.UUID{}
 				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
