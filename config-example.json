@@ -10,7 +10,8 @@
 	"MCUsername": "Yokai0nTop",
 	"CredentialsRoot": "./cmd/auth/",
 	"ChannelID": "1062458485016645642",
-	"FontPath": "MinecraftRegular-Bmg3.ttf",
+	"FontPath": "./Minecraft-Regular.otf",
 	"DatabaseFile": "./db.sqlite3",
-	"AddPrefix": false
+	"AddPrefix": false,
+	"NameOverridesPath": "overrides.json"
 }

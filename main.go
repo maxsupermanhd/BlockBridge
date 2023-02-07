@@ -12,9 +12,9 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
-	"runtime/debug"
 	"time"
 
 	"github.com/Tnze/go-mc/bot"
@@ -24,53 +24,47 @@ import (
 	"github.com/Tnze/go-mc/data/packetid"
 	pk "github.com/Tnze/go-mc/net/packet"
 	"github.com/bwmarrin/discordgo"
-	"github.com/golang/freetype/truetype"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
 	"github.com/maxsupermanhd/tabdrawer"
 	"github.com/natefinch/lumberjack"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
 type botConf struct {
-	ServerAddress   string
-	DiscordToken    string
-	DiscordAppID    string
-	DiscordGuildID  string
-	AllowedSlash    []string
-	LogsFilename    string
-	LogsMaxSize     int
-	CredentialsRoot string
-	MCUsername      string
-	ChannelID       string
-	FontPath        string
-	DatabaseFile    string
-	AddPrefix       bool
+	ServerAddress     string
+	DiscordToken      string
+	DiscordAppID      string
+	DiscordGuildID    string
+	AllowedSlash      []string
+	LogsFilename      string
+	LogsMaxSize       int
+	CredentialsRoot   string
+	MCUsername        string
+	ChannelID         string
+	FontPath          string
+	DatabaseFile      string
+	AddPrefix         bool
+	NameOverridesPath string
 }
 
 var loadedConfig botConf
 
-func must(err error) {
-	if err != nil {
-		debug.PrintStack()
-		log.Fatal(err)
-	}
-}
-
-func noerr[T any](ret T, err error) T {
-	must(err)
-	return ret
-}
+var (
+	nameOverrides = map[string]chat.Message{}
+)
 
 func loadConfig() {
 	path := os.Getenv("BLOCKBRIDGE_CONFIG")
 	if path == "" {
 		path = "config.json"
 	}
-	b, err := os.ReadFile(path)
-	must(err)
-	err = json.Unmarshal(b, &loadedConfig)
-	must(err)
+	must(json.Unmarshal(noerr(os.ReadFile(path)), &loadedConfig))
+	if loadedConfig.NameOverridesPath != "" {
+		must(json.Unmarshal(noerr(os.ReadFile(loadedConfig.NameOverridesPath)), &nameOverrides))
+	}
 }
 
 func main() {
@@ -139,6 +133,15 @@ func main() {
 		Name:          "tps",
 		Description:   "renders out tps chart",
 	}))
+	noerr(dg.ApplicationCommandCreate(loadedConfig.DiscordAppID, loadedConfig.DiscordGuildID, &discordgo.ApplicationCommand{
+		ID:            "reloadConfigCommand",
+		ApplicationID: loadedConfig.DiscordAppID,
+		GuildID:       loadedConfig.DiscordGuildID,
+		Version:       "1",
+		Type:          discordgo.ChatApplicationCommand,
+		Name:          "reloadconfig",
+		Description:   "reloads config",
+	}))
 	dg.Identify.Intents = discordgo.IntentsGuildMessages
 	err = dg.Open()
 	must(err)
@@ -158,7 +161,6 @@ func main() {
 		}
 	}()
 	log.Print("Connected to Discord.")
-	log.Print("Preparing credentials...")
 
 	client := bot.NewClient()
 	credman := credentials.NewMicrosoftCredentialsManager(loadedConfig.CredentialsRoot, "88650e7e-efee-4857-b9a9-cf580a00ef43")
@@ -230,14 +232,39 @@ func main() {
 		}
 	}()
 
+	log.Println("Loading tab params...")
 	tabparams := tabdrawer.TabParameters{
-		Font:                truetype.NewFace(noerr(truetype.Parse(noerr(os.ReadFile("./MinecraftRegular-Bmg3.ttf")))), &truetype.Options{Size: 32}),
+		Font: noerr(opentype.NewFace(noerr(opentype.Parse(noerr(os.ReadFile(loadedConfig.FontPath)))), &opentype.FaceOptions{
+			Size:    32,
+			DPI:     72,
+			Hinting: font.HintingFull,
+		})),
 		ColumnSpacing:       8,
 		RowSpacing:          1,
 		RowAdditionalHeight: 2,
+		OverridePlayerName: func(u uuid.UUID) *chat.Message {
+			v, ok := nameOverrides[u.String()]
+			if ok {
+				return &v
+			}
+			v, ok = nameOverrides[tabplayers[u].Name.ClearString()]
+			if ok {
+				return &v
+			}
+			return nil
+		},
 	}
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"reloadconfig": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			loadConfig()
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Reloaded.",
+				},
+			})
+		},
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			img := tabdrawer.DrawTab(tabplayers, tabtop, tabbottom, &tabparams)
 			buff := bytes.NewBufferString("")
@@ -414,6 +441,7 @@ func main() {
 						continue
 					}
 					if v.gamemode != 1 {
+						log.Printf("Gamemode change %v %v", uuidToString(v.uuid), v.gamemode)
 						mtods <- discordgo.MessageSend{
 							Content:    fmt.Sprintf("Player %v changed game mode to %v", uuidToString(v.uuid), gmodes[v.gamemode]),
 							Embeds:     []*discordgo.MessageEmbed{},
@@ -474,14 +502,16 @@ func main() {
 		for k := range tabplayers {
 			delete(tabplayers, k)
 		}
+		log.Println("Getting auth...")
 		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
 		must(err)
 		if botauth == nil {
 			log.Fatal("botauth nil")
 		}
 		client.Auth = *botauth
+		log.Println("Connecting to", loadedConfig.ServerAddress)
 		err = client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
-			Dialer:      nil,
+			Dialer:      &net.Dialer{Timeout: 10 * time.Second},
 			Context:     nil,
 			NoPublicKey: true,
 			KeyPair:     nil,
