@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -502,6 +503,8 @@ func main() {
 		for k := range tabplayers {
 			delete(tabplayers, k)
 		}
+		tabtop = &chat.Message{Text: "Disconnected"}
+		tabbottom = &chat.Message{}
 		log.Println("Getting auth...")
 		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
 		must(err)
@@ -510,21 +513,24 @@ func main() {
 		}
 		client.Auth = *botauth
 		log.Println("Connecting to", loadedConfig.ServerAddress)
+		timeout := time.Second * 10
+		dialctx, dialctxcancel := context.WithTimeout(context.Background(), timeout)
 		err = client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
-			Dialer:      &net.Dialer{Timeout: 10 * time.Second},
-			Context:     nil,
+			Dialer:      &net.Dialer{Timeout: timeout},
+			Context:     dialctx,
 			NoPublicKey: true,
 			KeyPair:     nil,
 		})
+		dialctxcancel()
 		if err != nil {
 			mtod <- "Failed to join server: " + err.Error()
-			time.Sleep(10 * time.Second)
+			time.Sleep(timeout)
 			continue
 		}
 		err = client.HandleGame()
 		if err != nil {
 			mtod <- "Disconnected: " + err.Error()
-			time.Sleep(10 * time.Second)
+			time.Sleep(timeout)
 		}
 	}
 	// sigchan := make(chan os.Signal, 1)
