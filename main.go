@@ -500,6 +500,7 @@ func main() {
 		},
 	})
 	for {
+		timeout := time.Second * 10
 		for k := range tabplayers {
 			delete(tabplayers, k)
 		}
@@ -507,13 +508,18 @@ func main() {
 		tabbottom = &chat.Message{}
 		log.Println("Getting auth...")
 		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
-		must(err)
+		if err != nil {
+			mtod <- "Failed to acquire auth: " + err.Error()
+			time.Sleep(timeout)
+			continue
+		}
 		if botauth == nil {
-			log.Fatal("botauth nil")
+			mtod <- "Bot auth is nil!"
+			time.Sleep(timeout)
+			continue
 		}
 		client.Auth = *botauth
 		log.Println("Connecting to", loadedConfig.ServerAddress)
-		timeout := time.Second * 10
 		dialctx, dialctxcancel := context.WithTimeout(context.Background(), timeout)
 		err = client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
 			Dialer:      &net.Dialer{Timeout: timeout},
