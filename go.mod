@@ -10,14 +10,14 @@ require (
 	github.com/fogleman/gg v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	golang.org/x/crypto v0.5.0 // indirect
-	golang.org/x/image v0.3.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
 )
 
 require (
-	github.com/Tnze/go-mc v1.19.2
+	github.com/Tnze/go-mc v1.19.4-pre1
 	github.com/bwmarrin/discordgo v0.27.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/google/uuid v1.3.0
 	github.com/mattn/go-sqlite3 v1.14.16
@@ -25,4 +25,5 @@ require (
 	github.com/maxsupermanhd/tabdrawer v0.0.0-20230206235353-b14d2df21904
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/wcharczuk/go-chart/v2 v2.1.0
+	golang.org/x/image v0.3.0
 )

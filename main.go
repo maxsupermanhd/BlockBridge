@@ -16,14 +16,19 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/bot/basic"
 	"github.com/Tnze/go-mc/bot/msg"
+	"github.com/Tnze/go-mc/bot/playerlist"
 	"github.com/Tnze/go-mc/chat"
+	"github.com/Tnze/go-mc/chat/sign"
 	"github.com/Tnze/go-mc/data/packetid"
+	mcnet "github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
+	"github.com/Tnze/go-mc/yggdrasil/user"
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -77,12 +82,14 @@ func main() {
 		Compress: true,
 	}))
 	tabplayers := map[uuid.UUID]tabdrawer.TabPlayer{}
+	tabplayersmutex := sync.Mutex{}
 	tabtop := new(chat.Message)
 	tabbottom := new(chat.Message)
 	log.Println("Hello world")
 
 	db := noerr(sql.Open("sqlite3", loadedConfig.DatabaseFile))
-	db.Exec(`create table if not exists tps (whenlogged timestamp, tpsvalue float);`)
+	noerr(db.Exec(`create table if not exists tps (whenlogged timestamp, tpsvalue float);`))
+	noerr(db.Exec(`create index if not exists tps_index on tps (whenlogged);`))
 
 	log.Print("Connecting to Discord...")
 	dg, err := discordgo.New("Bot " + loadedConfig.DiscordToken)
@@ -93,7 +100,7 @@ func main() {
 		userid string
 	}, 64)
 	defer close(dtom)
-	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+	dg.AddHandler(func(_ *discordgo.Session, m *discordgo.MessageCreate) {
 		if m.Author.Bot || m.ChannelID != loadedConfig.ChannelID {
 			return
 		}
@@ -143,6 +150,15 @@ func main() {
 		Name:          "reloadconfig",
 		Description:   "reloads config",
 	}))
+	noerr(dg.ApplicationCommandCreate(loadedConfig.DiscordAppID, loadedConfig.DiscordGuildID, &discordgo.ApplicationCommand{
+		ID:            "lasttpssamples",
+		ApplicationID: loadedConfig.DiscordAppID,
+		GuildID:       loadedConfig.DiscordGuildID,
+		Version:       "1",
+		Type:          discordgo.ChatApplicationCommand,
+		Name:          "lasttpssamples",
+		Description:   "spews out last tps sample",
+	}))
 	dg.Identify.Intents = discordgo.IntentsGuildMessages
 	err = dg.Open()
 	must(err)
@@ -172,34 +188,51 @@ func main() {
 		DisplayedSkinParts:  basic.Jacket | basic.LeftSleeve | basic.RightSleeve | basic.LeftPantsLeg | basic.RightPantsLeg | basic.Hat,
 		MainHand:            1,
 		EnableTextFiltering: false,
-		AllowListing:        false,
-		Brand:               "Pepe's chatbot",
+		AllowListing:        true,
+		Brand:               "Vanilla",
+		ChatColors:          true,
 	}, basic.EventsListener{
 		GameStart: func() error {
 			mtod <- "Logged in"
 			return nil
 		},
-		SystemMsg: func(c chat.Message, overlay bool) error {
-			if !overlay {
-				mtod <- c.ClearString()
-			}
-			return nil
-		},
 		Disconnect: func(reason chat.Message) error {
 			log.Println("Disconnect: ", reason.String())
+			mtod <- "Disconnect: " + reason.String()
 			return nil
 		},
 		HealthChange: nil,
 		Death:        nil,
 	})
-	msgman := msg.New(client, pla, msg.EventsHandler{
-		PlayerChatMessage: func(msg chat.Message) error {
+	msgman := msg.New(client, pla, playerlist.New(client), msg.EventsHandler{
+		SystemChat: func(c chat.Message, overlay bool) error {
+			if !overlay {
+				mtod <- c.ClearString()
+			}
+			return nil
+		},
+		PlayerChatMessage: func(msg chat.Message, _ bool) error {
+			mtod <- msg.ClearString()
+			return nil
+		},
+		DisguisedChat: func(msg chat.Message) error {
 			mtod <- msg.ClearString()
 			return nil
 		},
 	})
 	go func() {
 		for m := range dtom {
+			allowedsend := false
+			for _, allowedid := range loadedConfig.AllowedSlash {
+				if m.userid == allowedid {
+					allowedsend = true
+					break
+				}
+			}
+			if !allowedsend {
+				mtod <- "no chat for you"
+				continue
+			}
 			if len(m.msg) < 1 {
 				continue
 			}
@@ -267,7 +300,9 @@ func main() {
 			})
 		},
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			tabplayersmutex.Lock()
 			img := tabdrawer.DrawTab(tabplayers, tabtop, tabbottom, &tabparams)
+			tabplayersmutex.Unlock()
 			buff := bytes.NewBufferString("")
 			must(png.Encode(buff, img))
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -276,6 +311,33 @@ func main() {
 					Files: []*discordgo.File{{
 						Name:        "tab.png",
 						ContentType: "image/png",
+						Reader:      buff,
+					}},
+				},
+			})
+		},
+		"lasttpssamples": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			buff := bytes.NewBufferString("")
+			rows := noerr(db.Query(`select strftime('%Y-%m-%d %H:%M:%S', datetime(whenlogged, 'unixepoch')) , tpsvalue from tps order by whenlogged desc limit 50;`))
+			fmt.Fprint(buff, "Last 50 TPS samples:\n")
+			fmt.Fprint(buff, "Timestamp (UTC), TPS\n")
+			for rows.Next() {
+				var tmstp string
+				var tpsval float64
+				err := rows.Scan(&tmstp, &tpsval)
+				if err != nil {
+					log.Println(err)
+					break
+				}
+				fmt.Fprintf(buff, "%s, %.2f\n", tmstp, tpsval)
+			}
+			rows.Close()
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Files: []*discordgo.File{{
+						Name:        "tpslog.txt",
+						ContentType: "text/plain",
 						Reader:      buff,
 					}},
 				},
@@ -381,130 +443,226 @@ func main() {
 			return nil
 		},
 	})
+	imagefetches := make(chan struct {
+		i   uuid.UUID
+		url string
+	}, 512)
+	go func() {
+		for v := range imagefetches {
+			textureresp, err := http.Get(v.url)
+			if err != nil {
+				log.Println("Error fetching ", v.url, err)
+				continue
+			}
+			teximg, err := png.Decode(textureresp.Body)
+			if err != nil {
+				log.Println("Error decoding ", v.url, err)
+				continue
+			}
+			var headimg image.Image
+			headimg, _ = CropImage(teximg, image.Rect(8, 8, 16, 16))
+			log.Println("GET " + v.url)
+			tabplayersmutex.Lock()
+			player, ok := tabplayers[v.i]
+			if ok {
+				player.HeadTexture = headimg
+				tabplayers[v.i] = player
+			}
+			tabplayersmutex.Unlock()
+		}
+	}()
 	client.Events.AddListener(bot.PacketHandler{
-		ID:       packetid.ClientboundPlayerInfo,
+		ID:       packetid.ClientboundPlayerInfoRemove,
 		Priority: 20,
 		F: func(p pk.Packet) error {
-			var action pk.VarInt
-			must(p.Scan(&action))
-			switch action {
-			case 0:
-				arr := []PlayerInfoAdd{}
-				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
-				for _, v := range arr {
-					// spew.Dump(v.props)
-					var headimg image.Image
-					headimg = nil
-					for _, vv := range v.props {
-						if vv.name == "textures" {
-							var tex map[string]interface{}
-							must(json.Unmarshal(noerr(base64.StdEncoding.DecodeString(string(vv.value))), &tex))
-							texx, ok := tex["textures"].(map[string]interface{})
-							if !ok {
-								continue
-							}
-							texxx, ok := texx["SKIN"].(map[string]interface{})
-							if !ok {
-								continue
-							}
-							texurl, ok := texxx["url"].(string)
-							if !ok {
-								continue
-							}
-							log.Println("GET ", texurl)
-							textureresp, err := http.Get(texurl)
-							if err != nil {
-								log.Println("Error fetching ", texurl, err)
-								continue
-							}
-							teximg, err := png.Decode(textureresp.Body)
-							if err != nil {
-								log.Println("Error decoding ", texurl, err)
-								continue
-							}
-							headimg, _ = CropImage(teximg, image.Rect(8, 8, 16, 16))
-						}
-					}
-					tabplayers[uuid.UUID(v.uuid)] = tabdrawer.TabPlayer{
-						Name:        chat.Message{Text: string(v.name)},
-						Ping:        int(v.ping),
-						HeadTexture: headimg,
-					}
-					log.Printf("Player join %v %v", uuidToString(v.uuid), v.name)
+			tabplayersmutex.Lock()
+			defer tabplayersmutex.Unlock()
+			r := bytes.NewReader(p.Data)
+			var (
+				length pk.VarInt
+				id     pk.UUID
+			)
+			if _, err := length.ReadFrom(r); err != nil {
+				return err
+			}
+			for i := 0; i < int(length); i++ {
+				if _, err := id.ReadFrom(r); err != nil {
+					return err
 				}
-			case 1:
-				arr := []PlayerInfoUpdateGamemode{}
-				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
-				gmodes := []string{"Survival", "Creative", "Adventure", "Spectator"}
-				for _, v := range arr {
-					if v.gamemode < 0 || v.gamemode > 3 {
-						log.Printf("Overflow of the gamemode update: %#v", v)
+				delete(tabplayers, uuid.UUID(id))
+			}
+			return nil
+		}}, bot.PacketHandler{
+		ID:       packetid.ClientboundPlayerInfoUpdate,
+		Priority: 20,
+		F: func(p pk.Packet) error {
+			tabplayersmutex.Lock()
+			defer tabplayersmutex.Unlock()
+			r := bytes.NewReader(p.Data)
+			action := pk.NewFixedBitSet(6)
+			if _, err := action.ReadFrom(r); err != nil {
+				log.Println(err)
+				return err
+			}
+			var length pk.VarInt
+			if _, err := length.ReadFrom(r); err != nil {
+				log.Println(err)
+				return err
+			}
+			for i := 0; i < int(length); i++ {
+				var id pk.UUID
+				if _, err := id.ReadFrom(r); err != nil {
+					log.Println(err)
+					return err
+				}
+				uid := uuid.UUID(id)
+				player, ok := tabplayers[uid]
+				if !ok { // create new player info if not exist
+					player = tabdrawer.TabPlayer{}
+				}
+				// add player
+				if action.Get(0) {
+					var name pk.String
+					var properties []user.Property
+					if _, err := (pk.Tuple{&name, pk.Array(&properties)}).ReadFrom(r); err != nil {
+						log.Println(err)
+						return err
+					}
+					player.Name = chat.Text(string(name))
+					for _, v := range properties {
+						if v.Name != "textures" {
+							continue
+						}
+						var tex map[string]interface{}
+						must(json.Unmarshal(noerr(base64.StdEncoding.DecodeString(string(v.Value))), &tex))
+						texx, ok := tex["textures"].(map[string]interface{})
+						if !ok {
+							continue
+						}
+						texxx, ok := texx["SKIN"].(map[string]interface{})
+						if !ok {
+							continue
+						}
+						texurl, ok := texxx["url"].(string)
+						if !ok {
+							continue
+						}
+						imagefetches <- struct {
+							i   uuid.UUID
+							url string
+						}{
+							i:   uid,
+							url: texurl,
+						}
+						break
+					}
+				}
+				if action.Get(1) {
+					var chatSession pk.Option[sign.Session, *sign.Session]
+					if _, err := chatSession.ReadFrom(r); err != nil {
+						return err
+					}
+				}
+				// update gamemode
+				if action.Get(2) {
+					var gamemode pk.VarInt
+					if _, err := gamemode.ReadFrom(r); err != nil {
+						log.Println(err)
+						return err
+					}
+					if gamemode < 0 || gamemode > 3 {
+						log.Printf("Overflow of the gamemode update: %#v", gamemode)
 						continue
 					}
-					if v.gamemode != 1 {
-						log.Printf("Gamemode change %v %v", uuidToString(v.uuid), v.gamemode)
+					gmodes := []string{"Survival", "Creative", "Adventure", "Spectator"}
+					if gamemode == 1 {
+						log.Printf("Gamemode change %v %v", uuidToString(uid), gamemode)
 						mtods <- discordgo.MessageSend{
-							Content:    fmt.Sprintf("Player %v changed game mode to %v", uuidToString(v.uuid), gmodes[v.gamemode]),
-							Embeds:     []*discordgo.MessageEmbed{},
-							TTS:        false,
-							Components: []discordgo.MessageComponent{},
-							Files:      []*discordgo.File{},
+							Content: fmt.Sprintf("Player %v changed game mode to %v", uuidToString(uid), gmodes[gamemode]),
 							AllowedMentions: &discordgo.MessageAllowedMentions{
-								Parse:       []discordgo.AllowedMentionType{},
-								Roles:       []string{},
-								Users:       []string{"343418440423309314"},
-								RepliedUser: false,
+								Users: []string{"343418440423309314"},
 							},
-							Reference: &discordgo.MessageReference{},
-							File:      &discordgo.File{},
-							Embed:     &discordgo.MessageEmbed{},
+						}
+					}
+					player.Gamemode = gmodes[gamemode]
+				}
+				// update listed
+				if action.Get(3) {
+					var listed pk.Boolean
+					if _, err := listed.ReadFrom(r); err != nil {
+						log.Println(err)
+						return err
+					}
+					if !listed {
+						log.Printf("Someone not listed %v", uuidToString(uid))
+						mtods <- discordgo.MessageSend{
+							Content: fmt.Sprintf("Player %v is reported to not be listed in tab", uuidToString(uid)),
+							AllowedMentions: &discordgo.MessageAllowedMentions{
+								Users: []string{"343418440423309314"},
+							},
 						}
 					}
 				}
-			case 2:
-				arr := []PlayerInfoUpdatePing{}
-				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
-				for _, v := range arr {
-					t, ok := tabplayers[uuid.UUID(v.uuid)]
-					if ok {
-						t.Ping = int(v.ping)
-						tabplayers[uuid.UUID(v.uuid)] = t
-						// log.Printf("Ping update for the player %v %5d %v", uuidToString(v.uuid), v.ping, t.Name)
-					} else {
-						log.Printf("Ping update of the player that is not in the tab!!! %#v", v)
+				// update latency
+				if action.Get(4) {
+					var latency pk.VarInt
+					if _, err := latency.ReadFrom(r); err != nil {
+						log.Println(err)
+						return err
+					}
+					player.Ping = int(latency)
+				}
+				// display name
+				if action.Get(5) {
+					var displayName pk.Option[chat.Message, *chat.Message]
+					if _, err := displayName.ReadFrom(r); err != nil {
+						log.Println(err)
+						return err
+					}
+					if displayName.Has {
+						player.Name = displayName.Val
+						if len(displayName.Val.Extra) != 1 {
+							j, err := displayName.Val.MarshalJSON()
+							log.Println(err, "Weird stuff", string(j))
+						}
 					}
 				}
-			case 3:
-				arr := []PlayerInfoUpdateDisplayName{}
-				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
-				for _, v := range arr {
-					t, ok := tabplayers[uuid.UUID(v.uuid)]
-					if ok {
-						t.Name = *v.displayname
-					}
-				}
-			case 4:
-				arr := []pk.UUID{}
-				must(p.Scan(&action, pk.Ary[pk.VarInt]{Ary: &arr}))
-				for _, v := range arr {
-					tt, ok := tabplayers[uuid.UUID(v)]
-					if ok {
-						log.Printf("Player leave %v %v", uuidToString(v), tt.Name)
-						delete(tabplayers, uuid.UUID(v))
-					} else {
-						log.Printf("Delete of the player that is not in the tab!!! %#v", uuidToString(v))
-					}
-				}
+				// log.Println(printargs)
+				tabplayers[uid] = player
 			}
 			return nil
 		},
 	})
+	keepalivePackets := make(chan bool)
+	client.Events.AddListener(bot.PacketHandler{
+		ID:       packetid.ClientboundKeepAlive,
+		Priority: 20,
+		F: func(_ pk.Packet) error {
+			keepalivePackets <- true
+			return nil
+		},
+	})
+	go func() {
+		disconnectTime := 30 * time.Second
+		disconnectTimer := time.NewTimer(disconnectTime)
+		for {
+			select {
+			case <-disconnectTimer.C:
+				client.Conn.Close()
+			case <-keepalivePackets:
+				if !disconnectTimer.Stop() {
+					<-disconnectTimer.C
+				}
+				disconnectTimer.Reset(disconnectTime)
+			}
+		}
+	}()
 	for {
-		timeout := time.Second * 10
+		timeout := time.Second * 20
 		for k := range tabplayers {
 			delete(tabplayers, k)
 		}
-		tabtop = &chat.Message{Text: "Disconnected"}
+		tabtop = &chat.Message{}
 		tabbottom = &chat.Message{}
 		log.Println("Getting auth...")
 		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
@@ -521,8 +679,10 @@ func main() {
 		client.Auth = *botauth
 		log.Println("Connecting to", loadedConfig.ServerAddress)
 		dialctx, dialctxcancel := context.WithTimeout(context.Background(), timeout)
+		dialer := net.Dialer{Timeout: timeout}
+		mcdialer := (*mcnet.Dialer)(&dialer)
 		err = client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
-			Dialer:      &net.Dialer{Timeout: timeout},
+			MCDialer:    mcdialer,
 			Context:     dialctx,
 			NoPublicKey: true,
 			KeyPair:     nil,

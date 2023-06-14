@@ -27,8 +27,13 @@ func drawTPS(keys []time.Time, values []float64) io.Reader {
 
 	graph := chart.Chart{
 		XAxis: chart.XAxis{
-			ValueFormatter: chart.TimeHourValueFormatter,
-			Name:           "Time",
+			ValueFormatter: func(v interface{}) string {
+				if typed, isTyped := v.(float64); isTyped {
+					return time.Unix(0, int64(typed)).Format("02-01 15:04")
+				}
+				return ""
+			},
+			Name: "Time",
 			// ValueFormatter: chart.TimeValueFormatterWithFormat("02 Jan 06 15:04"),
 		},
 		YAxis: chart.YAxis{
@@ -56,6 +61,7 @@ func drawTPS(keys []time.Time, values []float64) io.Reader {
 				{Value: 19, Style: chart.Style{StrokeWidth: 2, Hidden: false, StrokeColor: drawing.Color{R: 40, G: 40, B: 40, A: 60}}},
 				{Value: 20, Style: chart.Style{StrokeWidth: 2, Hidden: false, StrokeColor: drawing.Color{R: 40, G: 40, B: 40, A: 60}}},
 			},
+			Range: &chart.ContinuousRange{Min: 0, Max: 20},
 		},
 		Series: []chart.Series{
 			TPSseries,
