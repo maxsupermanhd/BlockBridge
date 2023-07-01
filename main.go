@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -258,6 +259,63 @@ func main() {
 				}},
 			})
 		},
+		"lagspikes": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			options := i.ApplicationCommandData().Options
+			optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
+			for _, opt := range options {
+				optionMap[opt.Name] = opt
+			}
+			var dur *time.Duration
+			if durRaw, ok := optionMap["duration"]; ok {
+				durs, err := time.ParseDuration(durRaw.StringValue())
+				if err != nil {
+					s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+						Type: discordgo.InteractionResponseChannelMessageWithSource,
+						Data: &discordgo.InteractionResponseData{Content: "Invalid duration: " + err.Error()},
+					})
+					return
+				}
+				dur = &durs
+			}
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{Content: "Getting your data..."},
+			})
+			var r0, r1 io.Reader
+			spikes, err := GetLastLagspikes(db, dur)
+			if err != nil {
+				errstr := err.Error()
+				s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+					Content: &errstr,
+				})
+				return
+			}
+			r0 = FormatLagspikes(spikes)
+			r1, err = GetRankedLagspikes(spikes)
+			if err != nil {
+				errstr := err.Error()
+				s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+					Content: &errstr,
+				})
+				return
+			}
+			msg := "Last 150 lagspikes"
+			if dur != nil {
+				msg = fmt.Sprintf("Lagspike data for past %s", dur.String())
+			}
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &msg,
+				Files: []*discordgo.File{{
+					Name:        "lastLagspikes.txt",
+					ContentType: "text/plain",
+					Reader:      r0,
+				}, {
+					Name:        "lagspikeRank.txt",
+					ContentType: "text/plain",
+					Reader:      r1,
+				}},
+			})
+		},
 	}
 	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
@@ -265,6 +323,7 @@ func main() {
 		}
 	})
 	lastTimeUpdate := time.Now()
+	prevTPS := float32(-1)
 	client.Events.AddListener(bot.PacketHandler{
 		ID:       packetid.ClientboundSetTime,
 		Priority: 20,
@@ -286,7 +345,23 @@ func main() {
 				since = 20
 			}
 			lastTimeUpdate = time.Now()
-			noerr(db.Exec(`insert into tps (whenlogged, tpsvalue) values (unixepoch(), $1)`, since))
+			_, err := db.Exec(`insert into tps (whenlogged, tpsvalue) values (unixepoch(), $1)`, since)
+			if err != nil {
+				log.Println("Error inserting tps value ", err)
+			}
+			if prevTPS-since > 10 {
+				resp := make(chan interface{})
+				tabactions <- tabaction{
+					op:   "snapshot",
+					resp: resp,
+				}
+				pl := (<-resp).(string)
+				_, err := db.Exec(`insert into lagspikes (whenlogged, tpsprev, tpscurrent, players) values (unixepoch(), $1, $2, $3)`, prevTPS, since, pl)
+				if err != nil {
+					log.Println("Error inserting lagspikes value ", err)
+				}
+			}
+			prevTPS = since
 			return nil
 		},
 	})
@@ -303,38 +378,48 @@ func main() {
 			Priority: 20, ID: packetid.ClientboundTabList,
 			F: handleTabHeaderFooter,
 		})
-	keepalivePackets := make(chan bool)
-	client.Events.AddListener(bot.PacketHandler{
-		ID:       packetid.ClientboundKeepAlive,
-		Priority: 20,
-		F: func(_ pk.Packet) error {
-			keepalivePackets <- true
-			return nil
-		},
-	})
-	go func() {
-		disconnectTime := 30 * time.Second
-		disconnectTimer := time.NewTimer(disconnectTime)
-		for {
-			select {
-			case <-disconnectTimer.C:
-				if client.Conn != nil {
-					log.Println("Disconnect timer triggered")
-					client.Conn.Close()
-				} else {
-					log.Println("Disconnect timer triggered but connection is nil")
-				}
-			case <-keepalivePackets:
-				log.Println("Keepalive")
-				if !disconnectTimer.Stop() {
-					<-disconnectTimer.C
-				}
-				disconnectTimer.Reset(disconnectTime)
-			}
-		}
-	}()
+	// keepalivePackets := make(chan bool)
+	// cancelDisconnectTimer := make(chan bool)
+	// client.Events.AddListener(bot.PacketHandler{
+	// 	ID:       packetid.ClientboundKeepAlive,
+	// 	Priority: 20,
+	// 	F: func(_ pk.Packet) error {
+	// 		select {
+	// 		case keepalivePackets <- true:
+	// 		default:
+	// 			log.Println("Keepalive dropped")
+	// 		}
+	// 		return nil
+	// 	},
+	// })
+	// go func() {
+	// 	disconnectTime := 30 * time.Second
+	// 	disconnectTimer := time.NewTimer(disconnectTime)
+	// 	for {
+	// 		select {
+	// 		case <-disconnectTimer.C:
+	// 			if client.Conn != nil {
+	// 				log.Println("Disconnect timer triggered")
+	// 				client.Conn.Close()
+	// 			} else {
+	// 				log.Println("Disconnect timer triggered but connection is nil")
+	// 			}
+	// 		case <-keepalivePackets:
+	// 			log.Println("Keepalive")
+	// 			if !disconnectTimer.Stop() {
+	// 				<-disconnectTimer.C
+	// 			}
+	// 			disconnectTimer.Reset(disconnectTime)
+	// 		case <-cancelDisconnectTimer:
+	// 			log.Println("Keepalive timer canceled")
+	// 			if !disconnectTimer.Stop() {
+	// 				<-disconnectTimer.C
+	// 			}
+	// 		}
+	// 	}
+	// }()
 	for {
-		timeout := time.Second * 120
+		timeout := time.Second * 10
 		tabactions <- tabaction{op: "clear"}
 		log.Println("Getting auth...")
 		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
@@ -351,7 +436,7 @@ func main() {
 		client.Auth = *botauth
 		log.Println("Connecting to", loadedConfig.ServerAddress)
 		dialctx, dialctxcancel := context.WithTimeout(context.Background(), timeout)
-		dialer := net.Dialer{Timeout: timeout}
+		dialer := net.Dialer{Timeout: timeout, Deadline: time.Now().Add(timeout), KeepAlive: 1 * time.Second}
 		mcdialer := (*mcnet.Dialer)(&dialer)
 		err = client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
 			MCDialer:    mcdialer,
@@ -362,12 +447,15 @@ func main() {
 		dialctxcancel()
 		if err != nil {
 			mtod <- "Failed to join server: " + err.Error()
+			// cancelDisconnectTimer <- true
 			time.Sleep(timeout)
 			continue
 		}
 		log.Println("Connected, starting HandleGame")
 		err = client.HandleGame()
 		log.Println("HandleGame exited")
+		// cancelDisconnectTimer <- true
+		client.Close()
 		if err != nil {
 			mtod <- "Disconnected: " + err.Error()
 			time.Sleep(timeout)

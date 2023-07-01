@@ -8,6 +8,7 @@ require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
+	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
@@ -15,10 +16,8 @@ require (
 )
 
 require (
-	github.com/Tnze/go-mc v1.19.4-pre1
+	github.com/Tnze/go-mc v1.19.4-pre1.0.20230628032048-15478690a0fa
 	github.com/bwmarrin/discordgo v0.27.0
-	github.com/davecgh/go-spew v1.1.1
-	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/google/uuid v1.3.0
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/maxsupermanhd/go-mc-ms-auth v0.0.0-20220223195356-5256511fc797

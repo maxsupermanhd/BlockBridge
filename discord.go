@@ -63,6 +63,22 @@ func OpenDiscord() *discordgo.Session {
 		Name:          "lasttpssamples",
 		Description:   "spews out last tps sample",
 	}))
+	noerr(dg.ApplicationCommandCreate(loadedConfig.DiscordAppID, loadedConfig.DiscordGuildID, &discordgo.ApplicationCommand{
+		ID:            "lagspikes",
+		ApplicationID: loadedConfig.DiscordAppID,
+		GuildID:       loadedConfig.DiscordGuildID,
+		Version:       "2",
+		Type:          discordgo.ChatApplicationCommand,
+		Name:          "lagspikes",
+		Description:   "spews out last lagspikes and who was online",
+		Options: []*discordgo.ApplicationCommandOption{{
+			Type:        discordgo.ApplicationCommandOptionString,
+			Name:        "duration",
+			Description: "Valid time units are 'ns', 'us' (or 'µs'), 'ms', 's', 'm', 'h'.",
+			Required:    false,
+			MinValue:    new(float64),
+		}},
+	}))
 	must(dg.Open())
 	return dg
 }

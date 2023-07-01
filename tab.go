@@ -149,6 +149,16 @@ func TabProcessor() {
 			tb := r.data.(struct{ top, bottom chat.Message })
 			tabtop = tb.top
 			tabbottom = tb.bottom
+		case "snapshot":
+			keys := make([]uuid.UUID, 0, len(tab))
+			for u := range tab {
+				keys = append(keys, u)
+			}
+			sn, err := json.Marshal(keys)
+			if err != nil {
+				log.Println("Failed to marshal for snapshot ", err)
+			}
+			r.resp <- string(sn)
 		default:
 			log.Println("Unknown action")
 			log.Printf("%#+v", r)
