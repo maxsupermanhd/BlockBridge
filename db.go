@@ -19,8 +19,12 @@ func SetupDatabase() *sql.DB {
 	return db
 }
 
-func GetTPSValues(db *sql.DB) ([]time.Time, []float64, error) {
-	rows, err := db.Query(`select cast(whenlogged as int), tpsvalue from tps where whenlogged + 24*60*60 > unixepoch() order by whenlogged asc;`)
+func GetTPSValues(db *sql.DB, t *time.Duration) ([]time.Time, []float64, error) {
+	tv := time.Duration(24 * time.Hour)
+	if t != nil {
+		tv = *t
+	}
+	rows, err := db.Query(`select cast(whenlogged as int), tpsvalue from tps where whenlogged + $1 > unixepoch() order by whenlogged asc;`, tv.Seconds())
 	if err != nil {
 		return nil, nil, err
 	}

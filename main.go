@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"log"
 	"math/rand"
 	"net"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/Tnze/go-mc/bot"
@@ -25,6 +27,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
+	"github.com/maxsupermanhd/tpsdrawer"
+	"github.com/mazznoer/colorgrad"
 	"github.com/natefinch/lumberjack"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -245,17 +249,76 @@ func main() {
 				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{Content: "Rendering graph..."},
 			})
-			tpsval, tpsn, err := GetTPSValues(db)
+			tpsval, tpsn, err := GetTPSValues(db, nil)
 			if err != nil {
 				log.Println(err)
 				mtods <- err.Error()
 			}
 			img := drawTPS(tpsval, tpsn)
+			t := time.Duration(30 * 24 * time.Hour)
+			tpsval, tpsn, err = GetTPSValues(db, &t)
+			if err != nil {
+				log.Println(err)
+				mtods <- err.Error()
+			}
+			grad := noerr(colorgrad.NewGradient().
+				HtmlColors("darkred", "gold", "green").
+				Domain(0, 20).
+				Build())
+			img2 := tpsdrawer.DrawTPS(tpsval, tpsn, tpsdrawer.DrawOptions{
+				DayW:       100,
+				DayH:       40,
+				Padding:    8,
+				Spacing:    4,
+				Background: color.RGBA{R: 0x36, G: 0x39, B: 0x3f, A: 0xff},
+				FontColor:  color.White,
+				Gradient: func(f float64) color.Color {
+					if f == 0 {
+						return color.RGBA{R: 0x33, G: 0x33, B: 0x33, A: 0xFF}
+					}
+					r, g, b := grad.At(f).RGB255()
+					return color.RGBA{R: r, G: g, B: b, A: 0xFF}
+				},
+				SampleH:     32,
+				Comment:     fmt.Sprint("Made by FlexCoral, tracked by Yokai0nTop, ", len(tpsval), " samples"),
+				BreakMonths: true,
+				BreakMonday: true,
+				MeasureFunc: func(c []float64) (percentile float64) {
+					percent := 1.0
+					if len(c) == 0 {
+						return 0
+					}
+					if len(c) == 1 {
+						return c[0]
+					}
+					sort.Float64s(c)
+					index := (percent / 100) * float64(len(c))
+					if index == float64(int64(index)) {
+						i := int(index)
+						return c[i-1]
+					} else if index > 1 {
+						i := int(index)
+						return c[i-1] + c[i]/float64(len(c))
+					} else {
+						return 0
+					}
+				},
+			})
+			img2w := bytes.NewBufferString("")
+			err = png.Encode(img2w, img2)
+			if err != nil {
+				log.Println(err)
+				mtods <- err.Error()
+			}
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Files: []*discordgo.File{{
 					Name:        "tps.png",
 					ContentType: "image/png",
 					Reader:      img,
+				}, {
+					Name:        "tps.png",
+					ContentType: "image/png",
+					Reader:      img2w,
 				}},
 			})
 		},
@@ -378,46 +441,6 @@ func main() {
 			Priority: 20, ID: packetid.ClientboundTabList,
 			F: handleTabHeaderFooter,
 		})
-	// keepalivePackets := make(chan bool)
-	// cancelDisconnectTimer := make(chan bool)
-	// client.Events.AddListener(bot.PacketHandler{
-	// 	ID:       packetid.ClientboundKeepAlive,
-	// 	Priority: 20,
-	// 	F: func(_ pk.Packet) error {
-	// 		select {
-	// 		case keepalivePackets <- true:
-	// 		default:
-	// 			log.Println("Keepalive dropped")
-	// 		}
-	// 		return nil
-	// 	},
-	// })
-	// go func() {
-	// 	disconnectTime := 30 * time.Second
-	// 	disconnectTimer := time.NewTimer(disconnectTime)
-	// 	for {
-	// 		select {
-	// 		case <-disconnectTimer.C:
-	// 			if client.Conn != nil {
-	// 				log.Println("Disconnect timer triggered")
-	// 				client.Conn.Close()
-	// 			} else {
-	// 				log.Println("Disconnect timer triggered but connection is nil")
-	// 			}
-	// 		case <-keepalivePackets:
-	// 			log.Println("Keepalive")
-	// 			if !disconnectTimer.Stop() {
-	// 				<-disconnectTimer.C
-	// 			}
-	// 			disconnectTimer.Reset(disconnectTime)
-	// 		case <-cancelDisconnectTimer:
-	// 			log.Println("Keepalive timer canceled")
-	// 			if !disconnectTimer.Stop() {
-	// 				<-disconnectTimer.C
-	// 			}
-	// 		}
-	// 	}
-	// }()
 	for {
 		timeout := time.Second * 10
 		tabactions <- tabaction{op: "clear"}
