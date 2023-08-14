@@ -19,7 +19,7 @@ require (
 )
 
 require (
-	github.com/Tnze/go-mc v1.19.4-pre1.0.20230628032048-15478690a0fa
+	github.com/Tnze/go-mc v1.19.4-pre1.0.20230712005631-fe34dbd8bb6a
 	github.com/bwmarrin/discordgo v0.27.0
 	github.com/google/uuid v1.3.0
 	github.com/mattn/go-sqlite3 v1.14.16

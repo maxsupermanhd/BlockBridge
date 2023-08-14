@@ -133,7 +133,9 @@ func TabProcessor() {
 			texturecache[r.uid] = r.data.(image.Image)
 		case "draw":
 			td := map[uuid.UUID]tabdrawer.TabPlayer{}
+			tc := 0
 			for k, v := range tab {
+				tc++
 				p := tabdrawer.TabPlayer{Ping: int(v.Latency)}
 				p.HeadTexture = texturecache[k]
 				if v.DisplayName != nil {
@@ -142,6 +144,12 @@ func TabProcessor() {
 					p.Name = chat.Text(v.Name)
 				}
 				td[k] = p
+			}
+			if tabbottom.ClearString() == "" {
+				tabbottom = chat.Text(fmt.Sprintf("[BlockBridge] %d players online", tc))
+			}
+			if tabtop.ClearString() == "" {
+				tabtop = chat.Text(fmt.Sprintf("[BlockBridge] connected to %s", loadedConfig.ServerAddress))
 			}
 			img := tabdrawer.DrawTab(td, &tabtop, &tabbottom, &tabparams)
 			r.resp <- img

@@ -3,6 +3,8 @@ github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbi
 github.com/Tnze/go-mc v1.17.0/go.mod h1:t0AI38F1BEmmy8/uLhr9RCOUeDbBj3oUNQH9akjzMc0=
 github.com/Tnze/go-mc v1.19.4-pre1.0.20230628032048-15478690a0fa h1:wtQW0zB7hq0Pfevu6dLbpU606Knph+xVrEIc9W7pLkc=
 github.com/Tnze/go-mc v1.19.4-pre1.0.20230628032048-15478690a0fa/go.mod h1:c1znJQglgqa1Jjs3Dr29woN/msguiJrlNtWXhKedh2U=
+github.com/Tnze/go-mc v1.19.4-pre1.0.20230712005631-fe34dbd8bb6a h1:Qnnyja51C51zSrOkZH5OMsMaaggYfggXYmAzPXaohwQ=
+github.com/Tnze/go-mc v1.19.4-pre1.0.20230712005631-fe34dbd8bb6a/go.mod h1:c1znJQglgqa1Jjs3Dr29woN/msguiJrlNtWXhKedh2U=
 github.com/bwmarrin/discordgo v0.27.0 h1:4ZK9KN+rGIxZ0fdGTmgdCcliQeW8Zhu6MnlFI92nf0Q=
 github.com/bwmarrin/discordgo v0.27.0/go.mod h1:NJZpH+1AfhIcyQsPeuBKsUtYrRnjkyu0kIVMCHkZtRY=
 github.com/disintegration/imaging v1.6.2 h1:w1LecBlG2Lnp8B3jk5zSuNqd7b4DXhcjwek1ei82L+c=

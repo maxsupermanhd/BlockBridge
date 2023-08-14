@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Tnze/go-mc/bot"
@@ -49,6 +50,7 @@ type botConf struct {
 	DatabaseFile      string
 	AddPrefix         bool
 	NameOverridesPath string
+	AddTimestamps     bool
 }
 
 var (
@@ -100,9 +102,30 @@ func main() {
 	defer dg.Close()
 
 	go func() {
-		for msg := range mtod {
-			log.Printf("m->d [%v]", msg)
-			dg.ChannelMessageSend(loadedConfig.ChannelID, msg)
+		lastMessage := time.Now()
+		lastAggregate := ""
+		dflusher := time.NewTicker(time.Second * 5)
+		for {
+			select {
+			case msg := <-mtod:
+				if loadedConfig.AddTimestamps {
+					msg = time.Now().Format("`[02 Jan 06 15:04:05]` ") + strings.ReplaceAll(msg, "_", "\\_")
+				}
+				log.Printf("m-|d [%v]", msg)
+				lastAggregate += msg + "\n"
+				if time.Since(lastMessage).Seconds() > 2.5*float64(time.Second) {
+					dg.ChannelMessageSend(loadedConfig.ChannelID, lastAggregate)
+					lastAggregate = ""
+					lastMessage = time.Now()
+				}
+			case <-dflusher.C:
+				if lastAggregate == "" {
+					continue
+				}
+				dg.ChannelMessageSend(loadedConfig.ChannelID, lastAggregate)
+				lastAggregate = ""
+				lastMessage = time.Now()
+			}
 		}
 	}()
 	go func() {
