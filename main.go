@@ -109,8 +109,11 @@ func main() {
 		for {
 			select {
 			case msg := <-mtod:
+				msg = strings.ReplaceAll(msg, "_", "\\_")
+				msg = strings.ReplaceAll(msg, "`", "\\`")
+				msg = strings.ReplaceAll(msg, "*", "\\*")
 				if loadedConfig.AddTimestamps {
-					msg = time.Now().Format("`[02 Jan 06 15:04:05]` ") + strings.ReplaceAll(msg, "_", "\\_")
+					msg = time.Now().Format("`[02 Jan 06 15:04:05]` ") + msg
 				}
 				log.Printf("m-|d [%v]", msg)
 				lastAggregate += msg + "\n"
@@ -233,9 +236,6 @@ func main() {
 
 		}
 	}()
-
-	queueRead := queue.NewLinkedQueue[pk.Packet]()
-	queueWrite := queue.NewLinkedQueue[pk.Packet]()
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -452,6 +452,7 @@ func main() {
 				}
 			}
 			prevTPS = since
+			client.Conn.WritePacket(pk.Marshal(packetid.ServerboundSwing, pk.VarInt(0)))
 			return nil
 		},
 	})
@@ -493,8 +494,8 @@ func main() {
 			Context:     dialctx,
 			NoPublicKey: true,
 			KeyPair:     nil,
-			QueueRead:   queueRead,
-			QueueWrite:  queueWrite,
+			QueueRead:   queue.NewLinkedQueue[pk.Packet](),
+			QueueWrite:  queue.NewLinkedQueue[pk.Packet](),
 		})
 		dialctxcancel()
 		if err != nil {
