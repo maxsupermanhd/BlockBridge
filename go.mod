@@ -2,9 +2,9 @@ module github.com/maxsupermanhd/BlockBridge
 
 go 1.18
 
-require github.com/maxsupermanhd/WebChunk v0.0.0-20230131180227-4ebd646d3ea8
 
 require (
+	github.com/maxsupermanhd/WebChunk v0.0.0-20230131180227-4ebd646d3ea8
 	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
@@ -30,3 +30,5 @@ require (
 	github.com/wcharczuk/go-chart/v2 v2.1.0
 	golang.org/x/image v0.8.0
 )
+
+replace github.com/Tnze/go-mc => /home/blue/mc/go-mc

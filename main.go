@@ -25,6 +25,7 @@ import (
 	"github.com/Tnze/go-mc/data/packetid"
 	mcnet "github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
+	"github.com/Tnze/go-mc/net/queue"
 	"github.com/bwmarrin/discordgo"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
@@ -232,6 +233,9 @@ func main() {
 
 		}
 	}()
+
+	queueRead := queue.NewLinkedQueue[pk.Packet]()
+	queueWrite := queue.NewLinkedQueue[pk.Packet]()
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -489,6 +493,8 @@ func main() {
 			Context:     dialctx,
 			NoPublicKey: true,
 			KeyPair:     nil,
+			QueueRead:   queueRead,
+			QueueWrite:  queueWrite,
 		})
 		dialctxcancel()
 		if err != nil {
