@@ -470,7 +470,7 @@ func main() {
 			F: handleTabHeaderFooter,
 		})
 	for {
-		timeout := time.Second * 10
+		timeout := time.Second * 20
 		tabactions <- tabaction{op: "clear"}
 		log.Println("Getting auth...")
 		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
