@@ -12,7 +12,7 @@ import (
 
 func SetupDatabase() *sql.DB {
 	db := noerr(sql.Open("sqlite3", loadedConfig.DatabaseFile))
-	noerr(db.Exec(`create table if not exists tps (whenlogged timestamp, tpsvalue float);`))
+	noerr(db.Exec(`create table if not exists tps (whenlogged timestamp, tpsvalue float, playercount integer);`))
 	noerr(db.Exec(`create index if not exists tps_index on tps (whenlogged);`))
 	noerr(db.Exec(`create table if not exists lagspikes (whenlogged timestamp, tpsprev float, tpscurrent float, players text);`))
 	noerr(db.Exec(`create index if not exists lagspikes_index on lagspikes (whenlogged);`))
@@ -60,6 +60,52 @@ func GetTPSValues(db *sql.DB, t *time.Duration) ([]time.Time, []float64, error) 
 		}
 	}
 	return tpsval, tpsn, nil
+}
+
+func GetTPSPlayercountValues(db *sql.DB, t *time.Duration) ([]time.Time, []float64, []float64, error) {
+	tv := time.Duration(24 * time.Hour)
+	if t != nil {
+		tv = *t
+	}
+	rows, err := db.Query(`select cast(whenlogged as int), tpsvalue, playercount from tps where whenlogged + $1 > unixepoch() order by whenlogged asc;`, tv.Seconds())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close()
+	tpsval := []time.Time{}
+	tpsn := []float64{}
+	playercountn := []float64{}
+	for rows.Next() {
+		var (
+			when        int64
+			tps         float64
+			playercount float64
+		)
+		err = rows.Scan(&when, &tps, &playercount)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		tpsunix := time.Unix(when, 0)
+		tpsavgs := float64(0)
+		tpsavgc := float64(0)
+		timeavg := 20
+		ticksavg := timeavg * 20
+		for i := len(tpsn); i > 0 && i+ticksavg < len(tpsn); i++ {
+			if tpsunix.Sub(tpsval[i]) > time.Duration(timeavg)*time.Second {
+				break
+			}
+			tpsavgc++
+			tpsavgs += tpsn[i]
+		}
+		tpsval = append(tpsval, tpsunix)
+		if tpsavgc > 0 {
+			tpsn = append(tpsn, tpsavgs/tpsavgc)
+		} else {
+			tpsn = append(tpsn, tps)
+		}
+		playercountn = append(playercountn, playercount)
+	}
+	return tpsval, tpsn, playercountn, nil
 }
 
 func GetLastTPSValues(db *sql.DB) *bytes.Buffer {

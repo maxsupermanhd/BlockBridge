@@ -167,6 +167,8 @@ func TabProcessor() {
 				log.Println("Failed to marshal for snapshot ", err)
 			}
 			r.resp <- string(sn)
+		case "count":
+			r.resp <- len(tab)
 		default:
 			log.Println("Unknown action")
 			log.Printf("%#+v", r)

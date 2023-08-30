@@ -10,12 +10,20 @@ import (
 	"github.com/wcharczuk/go-chart/v2/drawing"
 )
 
-func drawTPS(keys []time.Time, values []float64) io.Reader {
+func drawTPS(keys []time.Time, tpsValues []float64, playercountValues []float64) io.Reader {
 
 	TPSseries := chart.TimeSeries{
 		XValues: keys,
-		YValues: values,
+		YValues: tpsValues,
 		Name:    "TPS",
+	}
+
+	playercountSeries := chart.TimeSeries{
+		XValues: keys,
+		YValues: playercountValues,
+		Name:    "Player count",
+		Style:   chart.Style{StrokeColor: drawing.Color{R: 128, G: 16, B: 16, A: 255}},
+		YAxis:   chart.YAxisSecondary,
 	}
 
 	AvgTPSseries := chart.SMASeries{
@@ -63,12 +71,40 @@ func drawTPS(keys []time.Time, values []float64) io.Reader {
 			},
 			Range: &chart.ContinuousRange{Min: 0, Max: 20},
 		},
+		YAxisSecondary: chart.YAxis{
+			ValueFormatter: chart.IntValueFormatter,
+			Name:           "Player count",
+			GridLines: []chart.GridLine{
+				{Value: 10, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 20, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 30, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 40, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 50, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 60, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 70, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 80, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 90, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 100, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 110, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 120, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 130, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 140, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 150, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 160, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 170, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 180, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 190, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+				{Value: 200, Style: chart.Style{StrokeWidth: 0, Hidden: false, StrokeColor: drawing.ColorTransparent}},
+			},
+			Range: &chart.ContinuousRange{Min: 0, Max: 200},
+		},
 		Series: []chart.Series{
 			TPSseries,
 			AvgTPSseries,
+			playercountSeries,
 		},
-		Background: chart.Style{Padding: chart.Box{Top: 50}},
-		Title:      "Constantiam TPS for around past 24h",
+		Background: chart.Style{Padding: chart.Box{Left: 18, Top: 50}},
+		Title:      "Constantiam TPS and player count for around past 24h",
 		Height:     500,
 	}
 	buf := bytes.NewBufferString("")

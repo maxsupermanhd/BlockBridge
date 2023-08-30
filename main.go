@@ -52,6 +52,7 @@ type botConf struct {
 	AddPrefix         bool
 	NameOverridesPath string
 	AddTimestamps     bool
+	CaptureLagspikes  bool
 }
 
 var (
@@ -276,12 +277,15 @@ func main() {
 				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{Content: "Rendering graph..."},
 			})
-			tpsval, tpsn, err := GetTPSValues(db, nil)
+			profilerbegin := time.Now()
+			tpsval, tpsn, plc, err := GetTPSPlayercountValues(db, nil)
 			if err != nil {
 				log.Println(err)
 				mtods <- err.Error()
 			}
-			img := drawTPS(tpsval, tpsn)
+			profilerGotData := time.Since(profilerbegin)
+			img := drawTPS(tpsval, tpsn, plc)
+			profilerChartDrawn := time.Since(profilerbegin)
 			t := time.Duration(30 * 24 * time.Hour)
 			tpsval, tpsn, err = GetTPSValues(db, &t)
 			if err != nil {
@@ -331,13 +335,20 @@ func main() {
 					}
 				},
 			})
+			profilerHeatmapDrawn := time.Since(profilerbegin)
 			img2w := bytes.NewBufferString("")
 			err = png.Encode(img2w, img2)
 			if err != nil {
 				log.Println(err)
 				mtods <- err.Error()
 			}
+			cnt := fmt.Sprintf(`Got data: %s
+Chart drawn: %s
+Heatmap drawn: %s
+Total: %s
+Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Since(profilerbegin), len(tpsval))
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: &cnt,
 				Files: []*discordgo.File{{
 					Name:        "tps.png",
 					ContentType: "image/png",
@@ -435,7 +446,13 @@ func main() {
 				since = 20
 			}
 			lastTimeUpdate = time.Now()
-			_, err := db.Exec(`insert into tps (whenlogged, tpsvalue) values (unixepoch(), $1)`, since)
+			tabresp := make(chan interface{})
+			tabactions <- tabaction{
+				op:   "count",
+				resp: tabresp,
+			}
+			tablen := (<-tabresp).(int)
+			_, err := db.Exec(`insert into tps (whenlogged, tpsvalue, playercount) values (unixepoch(), $1, $2)`, since, tablen)
 			if err != nil {
 				log.Println("Error inserting tps value ", err)
 			}
