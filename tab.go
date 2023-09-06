@@ -149,7 +149,7 @@ func TabProcessor() {
 				tabbottom = chat.Text(fmt.Sprintf("[BlockBridge] %d players online", tc))
 			}
 			if tabtop.ClearString() == "" {
-				tabtop = chat.Text(fmt.Sprintf("[BlockBridge] connected to %s", loadedConfig.ServerAddress))
+				tabtop = chat.Text(fmt.Sprintf("[BlockBridge] connected to %s", cfg.GetDString("localhost", "ServerAddress")))
 			}
 			img := tabdrawer.DrawTab(td, &tabtop, &tabbottom, &tabparams)
 			r.resp <- img

@@ -11,7 +11,7 @@ import (
 )
 
 func SetupDatabase() *sql.DB {
-	db := noerr(sql.Open("sqlite3", loadedConfig.DatabaseFile))
+	db := noerr(sql.Open("sqlite3", cfg.GetDString("", "DatabaseFile")))
 	noerr(db.Exec(`create table if not exists tps (whenlogged timestamp, tpsvalue float, playercount integer);`))
 	noerr(db.Exec(`create index if not exists tps_index on tps (whenlogged);`))
 	noerr(db.Exec(`create table if not exists lagspikes (whenlogged timestamp, tpsprev float, tpscurrent float, players text);`))

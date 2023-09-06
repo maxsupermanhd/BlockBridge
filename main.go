@@ -29,6 +29,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
+	"github.com/maxsupermanhd/lac"
 	"github.com/maxsupermanhd/tpsdrawer"
 	"github.com/mazznoer/colorgrad"
 	"github.com/natefinch/lumberjack"
@@ -36,28 +37,30 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
-type botConf struct {
-	ServerAddress     string
-	DiscordToken      string
-	DiscordAppID      string
-	DiscordGuildID    string
-	AllowedSlash      []string
-	LogsFilename      string
-	LogsMaxSize       int
-	CredentialsRoot   string
-	MCUsername        string
-	ChannelID         string
-	FontPath          string
-	DatabaseFile      string
-	AddPrefix         bool
-	NameOverridesPath string
-	AddTimestamps     bool
-	CaptureLagspikes  bool
-}
+// type botConf struct {
+// 	ServerAddress                string
+// 	DiscordToken                 string
+// 	DiscordAppID                 string
+// 	DiscordGuildID               string
+// 	AllowedSlash                 []string
+// 	LogsFilename                 string
+// 	LogsMaxSize                  int
+// 	CredentialsRoot              string
+// 	MCUsername                   string
+// 	ChannelID                    string
+// 	FontPath                     string
+// 	DatabaseFile                 string
+// 	AddPrefix                    bool
+// 	NameOverridesPath            string
+// 	AddTimestamps                bool
+// 	CaptureLagspikes             bool
+// 	StatusChannelID              string
+// 	StatusRefreshIntervalSeconds int
+// }
 
 var (
-	loadedConfig botConf
-	dtom         = make(chan struct {
+	cfg  *lac.Conf
+	dtom = make(chan struct {
 		msg    string
 		userid string
 	}, 128)
@@ -71,11 +74,16 @@ func init() {
 	if path == "" {
 		path = "config.json"
 	}
-	must(json.Unmarshal(noerr(os.ReadFile(path)), &loadedConfig))
-	if loadedConfig.NameOverridesPath != "" {
-		must(json.Unmarshal(noerr(os.ReadFile(loadedConfig.NameOverridesPath)), &nameOverrides))
+	var err error
+	cfg, err = lac.FromFileJSON(path)
+	if err != nil {
+		log.Fatalf("Error loading config: %s", err.Error())
 	}
-	tabparams.Font = noerr(opentype.NewFace(noerr(opentype.Parse(noerr(os.ReadFile(loadedConfig.FontPath)))), &opentype.FaceOptions{
+	nameOverridesPath, ok := cfg.GetString("", "NameOverridesPath")
+	if ok {
+		must(json.Unmarshal(noerr(os.ReadFile(nameOverridesPath)), &nameOverrides))
+	}
+	tabparams.Font = noerr(opentype.NewFace(noerr(opentype.Parse(noerr(os.ReadFile(cfg.GetDString("Minecraft-Regular.otf", "FontPath"))))), &opentype.FaceOptions{
 		Size:    32,
 		DPI:     72,
 		Hinting: font.HintingFull,
@@ -85,8 +93,8 @@ func init() {
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.SetOutput(io.MultiWriter(os.Stdout, &lumberjack.Logger{
-		Filename: loadedConfig.LogsFilename,
-		MaxSize:  loadedConfig.LogsMaxSize,
+		Filename: cfg.GetDString("logs/chatlog.log", "LogsFilename"),
+		MaxSize:  cfg.GetDInt(10, "LogsMaxSize"),
 		Compress: true,
 	}))
 	log.Println("Hello world")
@@ -113,13 +121,16 @@ func main() {
 				msg = strings.ReplaceAll(msg, "_", "\\_")
 				msg = strings.ReplaceAll(msg, "`", "\\`")
 				msg = strings.ReplaceAll(msg, "*", "\\*")
-				if loadedConfig.AddTimestamps {
+				if cfg.GetDBool(false, "AddTimestamps") {
 					msg = time.Now().Format("`[02 Jan 06 15:04:05]` ") + msg
 				}
 				log.Printf("m-|d [%v]", msg)
 				lastAggregate += msg + "\n"
 				if time.Since(lastMessage).Seconds() > 2.5*float64(time.Second) {
-					dg.ChannelMessageSend(loadedConfig.ChannelID, lastAggregate)
+					cid, ok := cfg.GetString("ChannelID")
+					if ok {
+						dg.ChannelMessageSend(cid, lastAggregate)
+					}
 					lastAggregate = ""
 					lastMessage = time.Now()
 				}
@@ -127,7 +138,10 @@ func main() {
 				if lastAggregate == "" {
 					continue
 				}
-				dg.ChannelMessageSend(loadedConfig.ChannelID, lastAggregate)
+				cid, ok := cfg.GetString("ChannelID")
+				if ok {
+					dg.ChannelMessageSend(cid, lastAggregate)
+				}
 				lastAggregate = ""
 				lastMessage = time.Now()
 			}
@@ -135,7 +149,12 @@ func main() {
 	}()
 	go func() {
 		for msg := range mtods {
-			_, err := dg.ChannelMessageSendComplex(loadedConfig.ChannelID, &discordgo.MessageSend{
+			cid, ok := cfg.GetString("ChannelID")
+			if !ok {
+				log.Println("ChannelID is not set, not sending ping message")
+				continue
+			}
+			_, err := dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
 				Content: "<@343418440423309314>",
 				Embed: &discordgo.MessageEmbed{
 					Type:  discordgo.EmbedTypeRich,
@@ -152,7 +171,7 @@ func main() {
 	}()
 
 	client := bot.NewClient()
-	credman := credentials.NewMicrosoftCredentialsManager(loadedConfig.CredentialsRoot, "88650e7e-efee-4857-b9a9-cf580a00ef43")
+	credman := credentials.NewMicrosoftCredentialsManager(cfg.GetDString("cmd/auth/", "CredentialsRoot"), "88650e7e-efee-4857-b9a9-cf580a00ef43")
 	pla := basic.NewPlayer(client, basic.Settings{
 		Locale:              "ru_RU",
 		ViewDistance:        15,
@@ -171,7 +190,7 @@ func main() {
 		},
 		Disconnect: func(reason chat.Message) error {
 			log.Println("Disconnect: ", reason.String())
-			mtod <- "Disconnect: " + reason.String()
+			mtod <- "Disconnect: " + reason.ClearString()
 			return nil
 		},
 		HealthChange: nil,
@@ -196,11 +215,16 @@ func main() {
 	go func() {
 		for m := range dtom {
 			allowedsend := false
-			for _, allowedid := range loadedConfig.AllowedSlash {
-				if m.userid == allowedid {
-					allowedsend = true
-					break
+			allowList, ok := cfg.GetString("", "AllowedChat")
+			if ok {
+				for _, allowedid := range strings.Split(allowList, ",") {
+					if m.userid == allowedid {
+						allowedsend = true
+						break
+					}
 				}
+			} else {
+				allowedsend = true
 			}
 			if !allowedsend {
 				mtod <- "no chat for you"
@@ -214,11 +238,16 @@ func main() {
 			}
 			if m.msg[0] == '/' {
 				allowedsend := false
-				for _, allowedid := range loadedConfig.AllowedSlash {
-					if m.userid == allowedid {
-						allowedsend = true
-						break
+				allowList, ok = cfg.GetString("", "AllowedSlash")
+				if ok {
+					for _, allowedid := range strings.Split(allowList, ",") {
+						if m.userid == allowedid {
+							allowedsend = true
+							break
+						}
 					}
+				} else {
+					allowedsend = true
 				}
 				if allowedsend {
 					// log.Println([]byte(m[1:]))
@@ -490,7 +519,7 @@ Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Si
 		timeout := time.Second * 20
 		tabactions <- tabaction{op: "clear"}
 		log.Println("Getting auth...")
-		botauth, err := credman.GetAuthForUsername(loadedConfig.MCUsername)
+		botauth, err := credman.GetAuthForUsername(cfg.GetDString("Steve", "MCUsername"))
 		if err != nil {
 			mtod <- "Failed to acquire auth: " + err.Error()
 			time.Sleep(timeout)
@@ -502,11 +531,11 @@ Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Si
 			continue
 		}
 		client.Auth = *botauth
-		log.Println("Connecting to", loadedConfig.ServerAddress)
+		log.Println("Connecting to", cfg.GetDString("localhost", "ServerAddress"))
 		dialctx, dialctxcancel := context.WithTimeout(context.Background(), timeout)
 		dialer := net.Dialer{Timeout: timeout, Deadline: time.Now().Add(timeout), KeepAlive: 1 * time.Second}
 		mcdialer := (*mcnet.Dialer)(&dialer)
-		err = client.JoinServerWithOptions(loadedConfig.ServerAddress, bot.JoinOptions{
+		err = client.JoinServerWithOptions(cfg.GetDString("localhost", "ServerAddress"), bot.JoinOptions{
 			MCDialer:    mcdialer,
 			Context:     dialctx,
 			NoPublicKey: true,
