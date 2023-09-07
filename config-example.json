@@ -1,17 +1,20 @@
 {
-	"ServerAddress": "constantiam.net",
-	"DiscordToken": "*snip*",
-	"DiscordAppID": "1062458709730664579",
-	"AllowedSlash": [
-		"343418440423309314"
-	],
+	"DatabaseFile": "./db/db.sqlite3",
+	"ChannelID": "1062458485016645642",
+	"AddPrefix": false,
+	"Discord": {
+		"Token": "*snip*",
+		"AppID": "1062458709730664579",
+		"GuildID": "943850199938371644"
+	},
+	"NameOverridesPath": "friendlist.json",
+	"FontPath": "./Minecraft-Regular.otf",
 	"LogsFilename": "logs/chatlog.log",
 	"LogsMaxSize": 10,
-	"MCUsername": "Yokai0nTop",
+	"AddTimestamps": true,
 	"CredentialsRoot": "./cmd/auth/",
-	"ChannelID": "1062458485016645642",
-	"FontPath": "./Minecraft-Regular.otf",
-	"DatabaseFile": "./db.sqlite3",
-	"AddPrefix": false,
-	"NameOverridesPath": "overrides.json"
+	"AllowedSlash": "343418440423309314",
+	"AllowedChat": "343418440423309314",
+	"MCUsername": "Yokai0nTop",
+	"ServerAddress": "constantiam.net"
 }
