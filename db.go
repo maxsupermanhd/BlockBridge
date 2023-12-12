@@ -2,29 +2,30 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
-	"encoding/json"
+	"context"
 	"fmt"
 	"log"
-	"sort"
+	"math"
 	"time"
+
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-func SetupDatabase() *sql.DB {
-	db := noerr(sql.Open("sqlite3", cfg.GetDString("", "DatabaseFile")))
-	noerr(db.Exec(`create table if not exists tps (whenlogged timestamp, tpsvalue float, playercount integer);`))
-	noerr(db.Exec(`create index if not exists tps_index on tps (whenlogged);`))
-	noerr(db.Exec(`create table if not exists lagspikes (whenlogged timestamp, tpsprev float, tpscurrent float, players text);`))
-	noerr(db.Exec(`create index if not exists lagspikes_index on lagspikes (whenlogged);`))
+func SetupDatabase() *pgxpool.Pool {
+	db := noerr(pgxpool.Connect(context.Background(), cfg.GetDString("", "DatabaseConnection")))
+	noerr(db.Exec(context.Background(), `create table if not exists tps (whenlogged timestamp, tpsvalue float, playercount integer);`))
+	noerr(db.Exec(context.Background(), `create index if not exists tps_index on tps (whenlogged);`))
+	// noerr(db.Exec(context.Background(), `create table if not exists lagspikes (whenlogged timestamp, tpsprev float, tpscurrent float, players text);`))
+	// noerr(db.Exec(context.Background(), `create index if not exists lagspikes_index on lagspikes (whenlogged);`))
 	return db
 }
 
-func GetTPSValues(db *sql.DB, t *time.Duration) ([]time.Time, []float64, error) {
+func GetTPSValues(db *pgxpool.Pool, t *time.Duration) ([]time.Time, []float64, error) {
 	tv := time.Duration(24 * time.Hour)
 	if t != nil {
 		tv = *t
 	}
-	rows, err := db.Query(`select cast(whenlogged as int), tpsvalue from tps where whenlogged + $1 > unixepoch() order by whenlogged asc;`, tv.Seconds())
+	rows, err := db.Query(context.Background(), `select whenlogged, tpsvalue from tps where whenlogged + $1::interval > now() order by whenlogged asc;`, fmt.Sprintf("%d seconds", int(math.Round(tv.Seconds()))))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -33,14 +34,13 @@ func GetTPSValues(db *sql.DB, t *time.Duration) ([]time.Time, []float64, error) 
 	tpsn := []float64{}
 	for rows.Next() {
 		var (
-			when int64
-			tps  float64
+			tpsunix time.Time
+			tps     float64
 		)
-		err = rows.Scan(&when, &tps)
+		err = rows.Scan(&tpsunix, &tps)
 		if err != nil {
 			return nil, nil, err
 		}
-		tpsunix := time.Unix(when, 0)
 		tpsavgs := float64(0)
 		tpsavgc := float64(0)
 		timeavg := 20
@@ -62,12 +62,12 @@ func GetTPSValues(db *sql.DB, t *time.Duration) ([]time.Time, []float64, error) 
 	return tpsval, tpsn, nil
 }
 
-func GetTPSPlayercountValues(db *sql.DB, t *time.Duration) ([]time.Time, []float64, []float64, error) {
-	tv := time.Duration(24 * time.Hour)
+func GetTPSPlayercountValues(db *pgxpool.Pool, t *time.Duration) ([]time.Time, []float64, []float64, error) {
+	tv := time.Duration(2 * 24 * time.Hour)
 	if t != nil {
 		tv = *t
 	}
-	rows, err := db.Query(`select cast(whenlogged as int), tpsvalue, playercount from tps where whenlogged + $1 > unixepoch() order by whenlogged asc;`, tv.Seconds())
+	rows, err := db.Query(context.Background(), `select whenlogged, tpsvalue, playercount from tps where whenlogged + $1::interval > now() order by whenlogged asc;`, fmt.Sprintf("%d seconds", int(math.Round(tv.Seconds()))))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -77,15 +77,14 @@ func GetTPSPlayercountValues(db *sql.DB, t *time.Duration) ([]time.Time, []float
 	playercountn := []float64{}
 	for rows.Next() {
 		var (
-			when        int64
+			tpsunix     time.Time
 			tps         float64
-			playercount float64
+			playercount int
 		)
-		err = rows.Scan(&when, &tps, &playercount)
+		err = rows.Scan(&tpsunix, &tps, &playercount)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		tpsunix := time.Unix(when, 0)
 		tpsavgs := float64(0)
 		tpsavgc := float64(0)
 		timeavg := 20
@@ -103,122 +102,47 @@ func GetTPSPlayercountValues(db *sql.DB, t *time.Duration) ([]time.Time, []float
 		} else {
 			tpsn = append(tpsn, tps)
 		}
-		playercountn = append(playercountn, playercount)
+		playercountn = append(playercountn, float64(playercount))
 	}
 	return tpsval, tpsn, playercountn, nil
 }
 
-func GetLastTPSValues(db *sql.DB) *bytes.Buffer {
+func GetLastTPSValues(db *pgxpool.Pool) *bytes.Buffer {
 	buff := bytes.NewBufferString("")
-	rows := noerr(db.Query(`select strftime('%Y-%m-%d %H:%M:%S', datetime(whenlogged, 'unixepoch')) , tpsvalue from tps order by whenlogged desc limit 500;`))
+	rows := noerr(db.Query(context.Background(), `select whenlogged, tpsvalue from tps order by whenlogged desc limit 500;`))
 	fmt.Fprint(buff, "Last 500 TPS samples:\n")
 	fmt.Fprint(buff, "Timestamp (UTC), TPS\n")
 	for rows.Next() {
-		var tmstp string
+		var tmstp time.Time
 		var tpsval float64
 		err := rows.Scan(&tmstp, &tpsval)
 		if err != nil {
 			log.Println(err)
 			break
 		}
-		fmt.Fprintf(buff, "%s, %.2f\n", tmstp, tpsval)
+		fmt.Fprintf(buff, "%s, %.2f\n", tmstp.Format(time.DateTime), tpsval)
 	}
 	rows.Close()
 	return buff
 }
 
-type lagspike struct {
-	timestamp   string
-	playersJSON string
-	tpsval0     float64
-	tpsval1     float64
-}
-
-func FormatLagspikes(s []lagspike) *bytes.Buffer {
-	buff := bytes.NewBufferString(fmt.Sprintf("Lagspikes (%d):\n", len(s)))
-	fmt.Fprint(buff, "Timestamp (UTC), TPS, players\n")
-	for _, v := range s {
-		fmt.Fprintf(buff, "%s, %.2f -> %.2f, %s\n", v.timestamp, v.tpsval0, v.tpsval1, v.playersJSON)
-	}
-	return buff
-}
-
-func GetLastLagspikes(db *sql.DB, dur *time.Duration) ([]lagspike, error) {
-	var rows *sql.Rows
-	var err error
-	ret := []lagspike{}
-	if dur != nil {
-		time.Now().Add(-dur.Abs()).Unix()
-		rows, err = db.Query(`select strftime('%Y-%m-%d %H:%M:%S', datetime(whenlogged, 'unixepoch')), tpsprev, tpscurrent, players from lagspikes where whenlogged > $1 order by whenlogged desc;`, time.Now().Add(-dur.Abs()).Unix())
-	} else {
-		rows, err = db.Query(`select strftime('%Y-%m-%d %H:%M:%S', datetime(whenlogged, 'unixepoch')), tpsprev, tpscurrent, players from lagspikes order by whenlogged desc limit 150;`)
+func getAvgPlayercountLong(db *pgxpool.Pool) ([]time.Time, []float64, error) {
+	rows, err := db.Query(context.Background(), `select s+'5 minutes'::interval, avg(playercount) from generate_series(now() - '14 days'::interval, now(), '10 minutes') as s, tps where whenlogged >= s and whenlogged <= s+'10 minutes'::interval group by s+'5 minutes'::interval order by s+'5 minutes'::interval;`)
+	if err != nil {
+		return nil, nil, err
 	}
 	defer rows.Close()
-	if err != nil {
-		return ret, err
-	}
+	rett := []time.Time{}
+	retv := []float64{}
 	for rows.Next() {
-		var tmstp, pl string
-		var tpsval0, tpsval1 float64
-		err := rows.Scan(&tmstp, &tpsval0, &tpsval1, &pl)
+		var t time.Time
+		var v float64
+		err = rows.Scan(&t, &v)
 		if err != nil {
-			return ret, err
+			return nil, nil, err
 		}
-		ret = append(ret, lagspike{
-			timestamp:   tmstp,
-			playersJSON: pl,
-			tpsval0:     tpsval0,
-			tpsval1:     tpsval1,
-		})
+		rett = append(rett, t)
+		retv = append(retv, v)
 	}
-	return ret, err
-}
-
-func GetRankedLagspikes(spikes []lagspike) (*bytes.Buffer, error) {
-	buff := bytes.NewBufferString("")
-	l := map[string]int{}
-	c := 0
-	for _, s := range spikes {
-		var p []string
-		err := json.Unmarshal([]byte(s.playersJSON), &p)
-		if err != nil {
-			return buff, err
-		}
-		for _, v := range p {
-			c, ok := l[v]
-			if ok {
-				l[v] = c + 1
-			} else {
-				l[v] = 1
-			}
-		}
-		c++
-	}
-	fmt.Fprintf(buff, "Rank of uuids that were online while server lagspiked: (%d lagspikes)\n", c)
-	fmt.Fprint(buff, "uuid, count of lagspikes\n")
-	ll := []struct {
-		u string
-		c int
-	}{}
-	for k, v := range l {
-		ll = append(ll, struct {
-			u string
-			c int
-		}{
-			u: k,
-			c: v,
-		})
-	}
-	sort.Slice(ll, func(i, j int) bool {
-		return ll[i].c > ll[j].c
-	})
-	num := 0
-	for _, v := range ll {
-		if num == 150 {
-			break
-		}
-		fmt.Fprintf(buff, "%s %d\n", v.u, v.c)
-		num++
-	}
-	return buff, nil
+	return rett, retv, nil
 }

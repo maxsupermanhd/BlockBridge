@@ -11,8 +11,10 @@ import (
 
 	"bytes"
 
+	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/chat"
 	"github.com/Tnze/go-mc/chat/sign"
+	"github.com/Tnze/go-mc/data/packetid"
 	"github.com/google/uuid"
 	"github.com/maxsupermanhd/tabdrawer"
 
@@ -98,7 +100,7 @@ func TabProcessor() {
 		case "add":
 			profile := r.data.(GameProfile)
 			tab[r.uid] = PlayerInfo{GameProfile: profile}
-			ProcessProps(profile.Properties, r.uid)
+			//ProcessProps(profile.Properties, r.uid)
 		case "setPing":
 			val := r.data.(int32)
 			p, ok := tab[r.uid]
@@ -151,6 +153,10 @@ func TabProcessor() {
 			if tabtop.ClearString() == "" {
 				tabtop = chat.Text(fmt.Sprintf("[BlockBridge] connected to %s", cfg.GetDString("localhost", "ServerAddress")))
 			}
+			tabtopjson, err := tabtop.MarshalJSON()
+			log.Println(err, string(tabtopjson))
+			tabbottomjson, err := tabbottom.MarshalJSON()
+			log.Println(err, string(tabbottomjson))
 			img := tabdrawer.DrawTab(td, &tabtop, &tabbottom, &tabparams)
 			r.resp <- img
 		case "setTopBottom":
@@ -174,6 +180,22 @@ func TabProcessor() {
 			log.Printf("%#+v", r)
 		}
 	}
+}
+
+func addTabHandlers(client *bot.Client) {
+	client.Events.AddListener(
+		bot.PacketHandler{
+			Priority: 64, ID: packetid.ClientboundPlayerInfoUpdate,
+			F: handlePlayerInfoUpdatePacket,
+		},
+		bot.PacketHandler{
+			Priority: 64, ID: packetid.ClientboundPlayerInfoRemove,
+			F: handlePlayerInfoRemovePacket,
+		},
+		bot.PacketHandler{
+			Priority: 20, ID: packetid.ClientboundTabList,
+			F: handleTabHeaderFooter,
+		})
 }
 
 func handleTabHeaderFooter(p pk.Packet) error {

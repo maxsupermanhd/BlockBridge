@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -85,22 +86,66 @@ func OpenDiscord() *discordgo.Session {
 		Name:          "lasttpssamples",
 		Description:   "spews out last tps sample",
 	}))
-	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
-		ID:            "lagspikes",
-		ApplicationID: AppID,
-		GuildID:       GuildID,
-		Version:       "2",
-		Type:          discordgo.ChatApplicationCommand,
-		Name:          "lagspikes",
-		Description:   "spews out last lagspikes and who was online",
-		Options: []*discordgo.ApplicationCommandOption{{
-			Type:        discordgo.ApplicationCommandOptionString,
-			Name:        "duration",
-			Description: "Valid time units are 'ns', 'us' (or 'µs'), 'ms', 's', 'm', 'h'.",
-			Required:    false,
-			MinValue:    new(float64),
-		}},
-	}))
 	must(dg.Open())
 	return dg
+}
+
+func pipeMessagesToDiscord(dg *discordgo.Session) {
+	lastMessage := time.Now()
+	lastAggregate := ""
+	dflusher := time.NewTicker(time.Second * 5)
+	for {
+		select {
+		case msg := <-mtod:
+			msg = strings.ReplaceAll(msg, "_", "\\_")
+			msg = strings.ReplaceAll(msg, "`", "\\`")
+			msg = strings.ReplaceAll(msg, "*", "\\*")
+			if cfg.GetDBool(false, "AddTimestamps") {
+				msg = time.Now().Format("`[02 Jan 06 15:04:05]` ") + msg
+			}
+			log.Printf("m-|d [%v]", msg)
+			lastAggregate += msg + "\n"
+			if time.Since(lastMessage).Seconds() > 2.5*float64(time.Second) {
+				cid, ok := cfg.GetString("ChannelID")
+				if ok {
+					dg.ChannelMessageSend(cid, lastAggregate)
+				}
+				lastAggregate = ""
+				lastMessage = time.Now()
+			}
+		case <-dflusher.C:
+			if lastAggregate == "" {
+				continue
+			}
+			cid, ok := cfg.GetString("ChannelID")
+			if ok {
+				dg.ChannelMessageSend(cid, lastAggregate)
+			}
+			lastAggregate = ""
+			lastMessage = time.Now()
+		}
+	}
+}
+
+func pipeImportantMessagesToDiscord(dg *discordgo.Session) {
+	for msg := range mtods {
+		cid, ok := cfg.GetString("ChannelID")
+		if !ok {
+			log.Println("ChannelID is not set, not sending ping message")
+			continue
+		}
+		_, err := dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
+			Content: "<@343418440423309314>",
+			Embed: &discordgo.MessageEmbed{
+				Type:  discordgo.EmbedTypeRich,
+				Title: msg,
+			},
+			AllowedMentions: &discordgo.MessageAllowedMentions{
+				Users: []string{"343418440423309314"},
+			},
+		})
+		if err != nil {
+			log.Println(err)
+		}
+	}
 }

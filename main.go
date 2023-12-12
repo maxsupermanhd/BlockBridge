@@ -4,24 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"image"
-	"image/color"
 	"image/png"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"os"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/bot/basic"
 	"github.com/Tnze/go-mc/bot/msg"
 	"github.com/Tnze/go-mc/bot/playerlist"
-	"github.com/Tnze/go-mc/chat"
 	"github.com/Tnze/go-mc/data/packetid"
 	mcnet "github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
@@ -30,8 +24,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
 	"github.com/maxsupermanhd/lac"
-	"github.com/maxsupermanhd/tpsdrawer"
-	"github.com/mazznoer/colorgrad"
 	"github.com/natefinch/lumberjack"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -74,12 +66,8 @@ func init() {
 	if path == "" {
 		path = "config.json"
 	}
-	var err error
-	cfg, err = lac.FromFileJSON(path)
-	if err != nil {
-		log.Fatalf("Error loading config: %s", err.Error())
-	}
-	nameOverridesPath, ok := cfg.GetString("", "NameOverridesPath")
+	cfg = noerr(lac.FromFileJSON(path))
+	nameOverridesPath, ok := cfg.GetString("NameOverridesPath")
 	if ok {
 		must(json.Unmarshal(noerr(os.ReadFile(nameOverridesPath)), &nameOverrides))
 	}
@@ -88,6 +76,7 @@ func init() {
 		DPI:     72,
 		Hinting: font.HintingFull,
 	}))
+	cachedStatusMessageID = cfg.GetDSString("", "CachedStatusMessageID")
 }
 
 func main() {
@@ -111,167 +100,22 @@ func main() {
 	dg := OpenDiscord()
 	defer dg.Close()
 
-	go func() {
-		lastMessage := time.Now()
-		lastAggregate := ""
-		dflusher := time.NewTicker(time.Second * 5)
-		for {
-			select {
-			case msg := <-mtod:
-				msg = strings.ReplaceAll(msg, "_", "\\_")
-				msg = strings.ReplaceAll(msg, "`", "\\`")
-				msg = strings.ReplaceAll(msg, "*", "\\*")
-				if cfg.GetDBool(false, "AddTimestamps") {
-					msg = time.Now().Format("`[02 Jan 06 15:04:05]` ") + msg
-				}
-				log.Printf("m-|d [%v]", msg)
-				lastAggregate += msg + "\n"
-				if time.Since(lastMessage).Seconds() > 2.5*float64(time.Second) {
-					cid, ok := cfg.GetString("ChannelID")
-					if ok {
-						dg.ChannelMessageSend(cid, lastAggregate)
-					}
-					lastAggregate = ""
-					lastMessage = time.Now()
-				}
-			case <-dflusher.C:
-				if lastAggregate == "" {
-					continue
-				}
-				cid, ok := cfg.GetString("ChannelID")
-				if ok {
-					dg.ChannelMessageSend(cid, lastAggregate)
-				}
-				lastAggregate = ""
-				lastMessage = time.Now()
-			}
-		}
-	}()
-	go func() {
-		for msg := range mtods {
-			cid, ok := cfg.GetString("ChannelID")
-			if !ok {
-				log.Println("ChannelID is not set, not sending ping message")
-				continue
-			}
-			_, err := dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
-				Content: "<@343418440423309314>",
-				Embed: &discordgo.MessageEmbed{
-					Type:  discordgo.EmbedTypeRich,
-					Title: msg,
-				},
-				AllowedMentions: &discordgo.MessageAllowedMentions{
-					Users: []string{"343418440423309314"},
-				},
-			})
-			if err != nil {
-				log.Println(err)
-			}
-		}
-	}()
+	go statusUpdater(dg, db)
+
+	go pipeMessagesToDiscord(dg)
+	go pipeImportantMessagesToDiscord(dg)
 
 	client := bot.NewClient()
 	credman := credentials.NewMicrosoftCredentialsManager(cfg.GetDString("cmd/auth/", "CredentialsRoot"), "88650e7e-efee-4857-b9a9-cf580a00ef43")
-	pla := basic.NewPlayer(client, basic.Settings{
-		Locale:              "ru_RU",
-		ViewDistance:        15,
-		ChatMode:            0,
-		DisplayedSkinParts:  basic.Jacket | basic.LeftSleeve | basic.RightSleeve | basic.LeftPantsLeg | basic.RightPantsLeg | basic.Hat,
-		MainHand:            1,
-		EnableTextFiltering: false,
-		AllowListing:        true,
-		Brand:               "Vanilla",
-		ChatColors:          true,
-	}, basic.EventsListener{
-		GameStart: func() error {
-			log.Println("Logged in")
-			mtod <- "Logged in"
-			return nil
-		},
-		Disconnect: func(reason chat.Message) error {
-			log.Println("Disconnect: ", reason.String())
-			mtod <- "Disconnect: " + reason.ClearString()
-			return nil
-		},
-		HealthChange: nil,
-		Death:        nil,
-	})
-	msgman := msg.New(client, pla, playerlist.New(client), msg.EventsHandler{
-		SystemChat: func(c chat.Message, overlay bool) error {
-			if !overlay {
-				mtod <- c.ClearString()
-			}
-			return nil
-		},
-		PlayerChatMessage: func(msg chat.Message, _ bool) error {
-			mtod <- msg.ClearString()
-			return nil
-		},
-		DisguisedChat: func(msg chat.Message) error {
-			mtod <- msg.ClearString()
-			return nil
-		},
-	})
-	go func() {
-		for m := range dtom {
-			allowedsend := false
-			allowList, ok := cfg.GetString("", "AllowedChat")
-			if ok {
-				for _, allowedid := range strings.Split(allowList, ",") {
-					if m.userid == allowedid {
-						allowedsend = true
-						break
-					}
-				}
-			} else {
-				allowedsend = true
-			}
-			if !allowedsend {
-				mtod <- "no chat for you"
-				continue
-			}
-			if len(m.msg) < 1 {
-				continue
-			}
-			if len(m.msg) > 254 {
-				m.msg = m.msg[:254]
-			}
-			if m.msg[0] == '/' {
-				allowedsend := false
-				allowList, ok = cfg.GetString("", "AllowedSlash")
-				if ok {
-					for _, allowedid := range strings.Split(allowList, ",") {
-						if m.userid == allowedid {
-							allowedsend = true
-							break
-						}
-					}
-				} else {
-					allowedsend = true
-				}
-				if allowedsend {
-					// log.Println([]byte(m[1:]))
-					client.Conn.WritePacket(pk.Marshal(packetid.ServerboundChatCommand,
-						pk.String(m.msg[1:]),            // command
-						pk.Long(time.Now().UnixMilli()), // instant
-						pk.Long(rand.Int63()),           // salt
-						pk.VarInt(0),                    // last seen
-						pk.VarInt(0),                    // msgcount?
-						pk.NewFixedBitSet(20),           // ack?
-					))
-				}
-			} else {
-				msgman.SendMessage(m.msg)
-			}
-
-		}
-	}()
+	pla := basic.NewPlayer(client, botBasicSettings, botBasicEvents)
+	msgman := msg.New(client, pla, playerlist.New(client), botMessageEvents)
+	go pipeMessagesFromDiscord(client, msgman)
 
 	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{Content: "Rendering graph..."},
+				Data: &discordgo.InteractionResponseData{Content: "Rendering tab..."},
 			})
 			rsp := make(chan interface{})
 			tabactions <- tabaction{
@@ -282,7 +126,7 @@ func main() {
 			must(png.Encode(buff, (<-rsp).(image.Image)))
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Files: []*discordgo.File{{
-					Name:        "tps.png",
+					Name:        "tab.png",
 					ContentType: "image/png",
 					Reader:      buff,
 				}},
@@ -306,143 +150,24 @@ func main() {
 				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{Content: "Rendering graph..."},
 			})
-			profilerbegin := time.Now()
-			tpsval, tpsn, plc, err := GetTPSPlayercountValues(db, nil)
+			tpschart, tpsheat, profiler, err := getStatusTPS(db)
 			if err != nil {
-				log.Println(err)
-				mtods <- err.Error()
-			}
-			profilerGotData := time.Since(profilerbegin)
-			img := drawTPS(tpsval, tpsn, plc)
-			profilerChartDrawn := time.Since(profilerbegin)
-			t := time.Duration(30 * 24 * time.Hour)
-			tpsval, tpsn, err = GetTPSValues(db, &t)
-			if err != nil {
-				log.Println(err)
-				mtods <- err.Error()
-			}
-			grad := noerr(colorgrad.NewGradient().
-				HtmlColors("darkred", "gold", "green").
-				Domain(0, 20).
-				Build())
-			img2 := tpsdrawer.DrawTPS(tpsval, tpsn, tpsdrawer.DrawOptions{
-				DayW:       100,
-				DayH:       40,
-				Padding:    8,
-				Spacing:    4,
-				Background: color.RGBA{R: 0x36, G: 0x39, B: 0x3f, A: 0xff},
-				FontColor:  color.White,
-				Gradient: func(f float64) color.Color {
-					if f == 0 {
-						return color.RGBA{R: 0x33, G: 0x33, B: 0x33, A: 0xFF}
-					}
-					r, g, b := grad.At(f).RGB255()
-					return color.RGBA{R: r, G: g, B: b, A: 0xFF}
-				},
-				SampleH:     32,
-				Comment:     fmt.Sprint("Made by FlexCoral, tracked by Yokai0nTop, ", len(tpsval), " samples"),
-				BreakMonths: true,
-				BreakMonday: true,
-				MeasureFunc: func(c []float64) (percentile float64) {
-					percent := 1.0
-					if len(c) == 0 {
-						return 0
-					}
-					if len(c) == 1 {
-						return c[0]
-					}
-					sort.Float64s(c)
-					index := (percent / 100) * float64(len(c))
-					if index == float64(int64(index)) {
-						i := int(index)
-						return c[i-1]
-					} else if index > 1 {
-						i := int(index)
-						return c[i-1] + c[i]/float64(len(c))
-					} else {
-						return 0
-					}
-				},
-			})
-			profilerHeatmapDrawn := time.Since(profilerbegin)
-			img2w := bytes.NewBufferString("")
-			err = png.Encode(img2w, img2)
-			if err != nil {
-				log.Println(err)
-				mtods <- err.Error()
-			}
-			cnt := fmt.Sprintf(`Got data: %s
-Chart drawn: %s
-Heatmap drawn: %s
-Total: %s
-Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Since(profilerbegin), len(tpsval))
-			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: &cnt,
-				Files: []*discordgo.File{{
-					Name:        "tps.png",
-					ContentType: "image/png",
-					Reader:      img,
-				}, {
-					Name:        "tps.png",
-					ContentType: "image/png",
-					Reader:      img2w,
-				}},
-			})
-		},
-		"lagspikes": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			options := i.ApplicationCommandData().Options
-			optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
-			for _, opt := range options {
-				optionMap[opt.Name] = opt
-			}
-			var dur *time.Duration
-			if durRaw, ok := optionMap["duration"]; ok {
-				durs, err := time.ParseDuration(durRaw.StringValue())
-				if err != nil {
-					s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-						Type: discordgo.InteractionResponseChannelMessageWithSource,
-						Data: &discordgo.InteractionResponseData{Content: "Invalid duration: " + err.Error()},
-					})
-					return
-				}
-				dur = &durs
-			}
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{Content: "Getting your data..."},
-			})
-			var r0, r1 io.Reader
-			spikes, err := GetLastLagspikes(db, dur)
-			if err != nil {
-				errstr := err.Error()
+				cnt := err.Error()
 				s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-					Content: &errstr,
+					Content: &cnt,
 				})
 				return
 			}
-			r0 = FormatLagspikes(spikes)
-			r1, err = GetRankedLagspikes(spikes)
-			if err != nil {
-				errstr := err.Error()
-				s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-					Content: &errstr,
-				})
-				return
-			}
-			msg := "Last 150 lagspikes"
-			if dur != nil {
-				msg = fmt.Sprintf("Lagspike data for past %s", dur.String())
-			}
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: &msg,
+				Content: &profiler,
 				Files: []*discordgo.File{{
-					Name:        "lastLagspikes.txt",
-					ContentType: "text/plain",
-					Reader:      r0,
+					Name:        "tpsChart.png",
+					ContentType: "image/png",
+					Reader:      tpschart,
 				}, {
-					Name:        "lagspikeRank.txt",
-					ContentType: "text/plain",
-					Reader:      r1,
+					Name:        "tpsHeat.png",
+					ContentType: "image/png",
+					Reader:      tpsheat,
 				}},
 			})
 		},
@@ -453,7 +178,7 @@ Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Si
 		}
 	})
 	lastTimeUpdate := time.Now()
-	prevTPS := float32(-1)
+	// prevTPS := float32(-1)
 	client.Events.AddListener(bot.PacketHandler{
 		ID:       packetid.ClientboundSetTime,
 		Priority: 20,
@@ -462,7 +187,11 @@ Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Si
 				worldAge  pk.Long
 				timeOfDay pk.Long
 			)
-			must(p.Scan(&worldAge, &timeOfDay))
+			err := p.Scan(&worldAge, &timeOfDay)
+			if err != nil {
+				log.Printf("Failed to scan world age and time of day: %s", err.Error())
+				return nil
+			}
 			last := float32(time.Since(lastTimeUpdate).Milliseconds()) / float32(1000)
 			if last == 0 {
 				last = 1
@@ -475,49 +204,27 @@ Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Si
 				since = 20
 			}
 			lastTimeUpdate = time.Now()
-			tabresp := make(chan interface{})
-			tabactions <- tabaction{
-				op:   "count",
-				resp: tabresp,
-			}
-			tablen := (<-tabresp).(int)
-			_, err := db.Exec(`insert into tps (whenlogged, tpsvalue, playercount) values (unixepoch(), $1, $2)`, since, tablen)
-			if err != nil {
-				log.Println("Error inserting tps value ", err)
-			}
-			if prevTPS-since > 10 {
-				resp := make(chan interface{})
+			go func(when time.Time, since float32) {
+				tabresp := make(chan interface{})
 				tabactions <- tabaction{
-					op:   "snapshot",
-					resp: resp,
+					op:   "count",
+					resp: tabresp,
 				}
-				pl := (<-resp).(string)
-				_, err := db.Exec(`insert into lagspikes (whenlogged, tpsprev, tpscurrent, players) values (unixepoch(), $1, $2, $3)`, prevTPS, since, pl)
+				tablen := (<-tabresp).(int)
+				_, err = db.Exec(context.Background(), `insert into tps (whenlogged, tpsvalue, playercount) values ($1, $2, $3)`, when, since, tablen)
 				if err != nil {
-					log.Println("Error inserting lagspikes value ", err)
+					log.Printf("Error inserting tps value: %s", err.Error())
 				}
-			}
-			prevTPS = since
+			}(time.Now(), since)
+			// prevTPS = since
 			client.Conn.WritePacket(pk.Marshal(packetid.ServerboundSwing, pk.VarInt(0)))
 			return nil
 		},
 	})
-	client.Events.AddListener(
-		bot.PacketHandler{
-			Priority: 64, ID: packetid.ClientboundPlayerInfoUpdate,
-			F: handlePlayerInfoUpdatePacket,
-		},
-		bot.PacketHandler{
-			Priority: 64, ID: packetid.ClientboundPlayerInfoRemove,
-			F: handlePlayerInfoRemovePacket,
-		},
-		bot.PacketHandler{
-			Priority: 20, ID: packetid.ClientboundTabList,
-			F: handleTabHeaderFooter,
-		})
+	addTabHandlers(client)
 	for {
-		timeout := time.Second * 20
 		tabactions <- tabaction{op: "clear"}
+		timeout := time.Second * 60
 		log.Println("Getting auth...")
 		botauth, err := credman.GetAuthForUsername(cfg.GetDString("Steve", "MCUsername"))
 		if err != nil {
