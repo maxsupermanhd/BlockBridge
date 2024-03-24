@@ -60,17 +60,17 @@ var (
 
 func pipeMessagesFromDiscord(client *bot.Client, msgman *msg.Manager) {
 	for m := range dtom {
-		allowedsend := false
+		allowedsend := true
 		allowList, ok := cfg.GetString("", "AllowedChat")
 		if ok {
+			allowedsend = false
 			for _, allowedid := range strings.Split(allowList, ",") {
 				if m.userid == allowedid {
 					allowedsend = true
+					log.Println("message from ", m.userid, " was whitelisted")
 					break
 				}
 			}
-		} else {
-			allowedsend = true
 		}
 		if !allowedsend {
 			mtod <- "no chat for you"

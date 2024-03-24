@@ -15,6 +15,7 @@
 # vendor/
 
 logs/
+messeduplogs/
 BlockBridge
 config.json
 db/

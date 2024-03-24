@@ -59,6 +59,9 @@ func OpenDiscord() *discordgo.Session {
 	dg := noerr(discordgo.New("Bot " + DiscordToken))
 	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
 	dg.AddHandler(handleDiscordMessage)
+	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Println("Discord connection ready")
+	})
 	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
 		ID:            "tabCommand",
 		ApplicationID: AppID,
@@ -68,15 +71,15 @@ func OpenDiscord() *discordgo.Session {
 		Name:          "tab",
 		Description:   "renders out tab",
 	}))
-	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
-		ID:            "tpsCommand",
-		ApplicationID: AppID,
-		GuildID:       GuildID,
-		Version:       "1",
-		Type:          discordgo.ChatApplicationCommand,
-		Name:          "tps",
-		Description:   "renders out tps chart",
-	}))
+	// noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
+	// 	ID:            "tpsCommand",
+	// 	ApplicationID: AppID,
+	// 	GuildID:       GuildID,
+	// 	Version:       "1",
+	// 	Type:          discordgo.ChatApplicationCommand,
+	// 	Name:          "tps",
+	// 	Description:   "renders out tps chart",
+	// }))
 	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
 		ID:            "lasttpssamples",
 		ApplicationID: AppID,
@@ -100,6 +103,10 @@ func pipeMessagesToDiscord(dg *discordgo.Session) {
 			msg = strings.ReplaceAll(msg, "_", "\\_")
 			msg = strings.ReplaceAll(msg, "`", "\\`")
 			msg = strings.ReplaceAll(msg, "*", "\\*")
+			msg = strings.ReplaceAll(msg, "~", "\\~")
+			msg = strings.ReplaceAll(msg, "#", "\\#")
+			msg = strings.ReplaceAll(msg, "-", "\\-")
+			msg = strings.ReplaceAll(msg, "|", "\\|")
 			if cfg.GetDBool(false, "AddTimestamps") {
 				msg = time.Now().Format("`[02 Jan 06 15:04:05]` ") + msg
 			}
@@ -134,14 +141,15 @@ func pipeImportantMessagesToDiscord(dg *discordgo.Session) {
 			log.Println("ChannelID is not set, not sending ping message")
 			continue
 		}
+		id := cfg.GetDString("343418440423309314", "ImportantPingID")
 		_, err := dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
-			Content: "<@343418440423309314>",
+			Content: "<@" + id + ">",
 			Embed: &discordgo.MessageEmbed{
 				Type:  discordgo.EmbedTypeRich,
 				Title: msg,
 			},
 			AllowedMentions: &discordgo.MessageAllowedMentions{
-				Users: []string{"343418440423309314"},
+				Users: []string{id},
 			},
 		})
 		if err != nil {
