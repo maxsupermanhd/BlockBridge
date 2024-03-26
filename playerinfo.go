@@ -3,8 +3,8 @@ package main
 import (
 	"io"
 
-	"github.com/Tnze/go-mc/chat"
-	pk "github.com/Tnze/go-mc/net/packet"
+	"github.com/maxsupermanhd/go-vmc/v762/chat"
+	pk "github.com/maxsupermanhd/go-vmc/v762/net/packet"
 )
 
 type PlayerInfoUpdateDisplayName struct {

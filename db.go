@@ -8,6 +8,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -15,6 +16,7 @@ func SetupDatabase() *pgxpool.Pool {
 	db := noerr(pgxpool.Connect(context.Background(), cfg.GetDString("", "DatabaseConnection")))
 	noerr(db.Exec(context.Background(), `create table if not exists tps (whenlogged timestamp, tpsvalue float, playercount integer);`))
 	noerr(db.Exec(context.Background(), `create index if not exists tps_index on tps (whenlogged);`))
+	noerr(db.Exec(context.Background(), `create table if not exists backonlinesubs(discorduserid text not null primary key, subtime int not null, dmchanid text not null);`))
 	// noerr(db.Exec(context.Background(), `create table if not exists lagspikes (whenlogged timestamp, tpsprev float, tpscurrent float, players text);`))
 	// noerr(db.Exec(context.Background(), `create index if not exists lagspikes_index on lagspikes (whenlogged);`))
 	return db
@@ -145,4 +147,44 @@ func getAvgPlayercountLong(db *pgxpool.Pool) ([]time.Time, []float64, error) {
 		retv = append(retv, v)
 	}
 	return rett, retv, nil
+}
+
+type pingbackonline struct {
+	discorduserid string
+	dmchannelid   string
+	subtime       int
+}
+
+func removePingbackonlineSub(db *pgxpool.Pool, userid string) (string, error) {
+	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer ctxCancel()
+	result, err := db.Exec(ctx, `delete from backonlinesubs where discorduserid = $1;`, userid)
+	return result.String(), err
+}
+
+func recordPingbackonlineSub(db *pgxpool.Pool, p pingbackonline) (string, error) {
+	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer ctxCancel()
+	result, err := db.Exec(ctx, `insert into backonlinesubs (discorduserid, subtime, dmchanid) values($1, $2, $3) on conflict (discorduserid) do update set subtime = excluded.subtime;`,
+		p.discorduserid, p.subtime, p.dmchannelid)
+	return result.String(), err
+}
+
+func getNextPingbackonlineSub(db *pgxpool.Pool) (*pingbackonline, error) {
+	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer ctxCancel()
+	var discorduserid, dmchanid string
+	var subtime int
+	err := db.QueryRow(ctx, `select discorduserid, subtime, dmchanid from backonlinesubs order by subtime asc limit 1;`).Scan(&discorduserid, &subtime, &dmchanid)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &pingbackonline{
+		discorduserid: discorduserid,
+		dmchannelid:   dmchanid,
+		subtime:       subtime,
+	}, err
 }

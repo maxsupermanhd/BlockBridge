@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/png"
 	"log"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,6 +96,171 @@ func OpenDiscord() *discordgo.Session {
 	}))
 	must(dg.Open())
 	return dg
+}
+
+var (
+	componentHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"pingbackonline_select_time": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Select amount of time server has to be online.\n" +
+						"Pings will be sent out to DMs, please allow them if you want to get it.\n" +
+						"Once bot joins the server and stays on it connected (1m or so disconnect timeout counts as being on the server)\n" +
+						"Every selected time it will check who subbed to specific times and will start delivering DMs.\n" +
+						"If you sub to ping when server is online then you will get a ping once Yokai0nTop reconnects to the server (either bot/server restarts or internet dies on either end).",
+					Flags: discordgo.MessageFlagsEphemeral,
+					Components: []discordgo.MessageComponent{
+						discordgo.ActionsRow{
+							Components: []discordgo.MessageComponent{
+								discordgo.SelectMenu{
+									MenuType: discordgo.StringSelectMenu,
+									CustomID: "pingbackonline_selected",
+									Options: []discordgo.SelectMenuOption{
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "Immediately", Value: "0"},
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "1 minute", Value: "60"},
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "2 minutes", Value: "120"},
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "3 minutes", Value: "180"},
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "5 minutes", Value: "300"},
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "10 minutes", Value: "600"},
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "15 minutes", Value: "900"},
+										{Emoji: discordgo.ComponentEmoji{Name: "🏓"}, Label: "20 minutes", Value: "1200"},
+										{Emoji: discordgo.ComponentEmoji{Name: "❌"}, Label: "Unsubscribe", Value: "-1"},
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+			if err != nil {
+				log.Printf("Failed to respond with interaction: %s", err.Error())
+			}
+		},
+		"pingbackonline_selected": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			subtime, err := strconv.Atoi(i.MessageComponentData().Values[0])
+			if err != nil {
+				iRespondUpdate(s, i, fmt.Sprintf("Invalid time from selector (bug?): %q", err.Error()))
+				return
+			}
+			if subtime < 0 {
+				log.Printf("Removing backonline sub from %s %s", i.Member.User.Username, i.Member.User.ID)
+				result, err := removePingbackonlineSub(db, i.Member.User.ID)
+				if err != nil {
+					iRespondUpdate(s, i, fmt.Sprintf("Error removing sub from database: %q (result %q)\n", err.Error(), result))
+					return
+				}
+				iRespondUpdate(s, i, fmt.Sprintf("Your username is %q, id is %q and you selected removal of the ping\n"+
+					"Your ping subscription was removed, you will not be DMed.", i.Member.User.Username, i.Member.User.ID))
+			} else {
+				dmchannelid, err := openDM(s, i.Member.User.ID)
+				if err != nil {
+					iRespondUpdate(s, i, fmt.Sprintf("Can't open a DM to you, please check if it is allowed (%s)", err.Error()))
+					return
+				}
+				result, err := recordPingbackonlineSub(db, pingbackonline{
+					discorduserid: i.Member.User.ID,
+					dmchannelid:   dmchannelid,
+					subtime:       subtime,
+				})
+				if err != nil {
+					iRespondUpdate(s, i, fmt.Sprintf("Error recording sub to database: %q (result %q)\n", err.Error(), result))
+					return
+				}
+				log.Printf("New backonline sub from %s %s for %s seconds", i.Member.User.Username, i.Member.User.ID, i.MessageComponentData().Values[0])
+				iRespondUpdate(s, i, fmt.Sprintf("Your username is %q, id is %q and you selected %q seconds\n"+
+					"Your ping subscription was recorded, if you want to cancel it, select unsubscribe option.", i.Member.User.Username, i.Member.User.ID, i.MessageComponentData().Values[0]))
+			}
+		},
+	}
+
+	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			iRespondLoading(s, i, "Rendering tab...")
+			rsp := make(chan interface{})
+			tabactions <- tabaction{
+				op:   "draw",
+				resp: rsp,
+			}
+			buff := bytes.NewBufferString("")
+			must(png.Encode(buff, (<-rsp).(image.Image)))
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Files: []*discordgo.File{{
+					Name:        "tab.png",
+					ContentType: "image/png",
+					Reader:      buff,
+				}},
+			})
+		},
+		"lasttpssamples": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+			iRespondLoading(s, i, "Getting tps data...")
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Files: []*discordgo.File{{
+					Name:        "tpslog.txt",
+					ContentType: "text/plain",
+					Reader:      GetLastTPSValues(db),
+				}},
+			})
+		},
+		// "tps": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		// 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		// 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		// 		Data: &discordgo.InteractionResponseData{Content: "Rendering graph..."},
+		// 	})
+		// 	tpschart, tpsheat, profiler, err := getStatusTPS(db)
+		// 	if err != nil {
+		// 		cnt := err.Error()
+		// 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		// 			Content: &cnt,
+		// 		})
+		// 		return
+		// 	}
+		// 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		// 		Content: &profiler,
+		// 		Files: []*discordgo.File{{
+		// 			Name:        "tpsChart.png",
+		// 			ContentType: "image/png",
+		// 			Reader:      tpschart,
+		// 		}, {
+		// 			Name:        "tpsHeat.png",
+		// 			ContentType: "image/png",
+		// 			Reader:      tpsheat,
+		// 		}},
+		// 	})
+		// },
+	}
+)
+
+func iRespondLoading(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Content: content},
+	})
+	if err != nil {
+		log.Printf("Failed to respond to interaction with loading: %q", err.Error())
+		debug.PrintStack()
+	}
+}
+
+func iRespondUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{Content: content},
+	})
+	if err != nil {
+		log.Printf("Failed to respond to interaction with message update: %q", err.Error())
+		debug.PrintStack()
+	}
+}
+
+func openDM(dg *discordgo.Session, discorduserid string) (string, error) {
+	ch, err := dg.UserChannelCreate(discorduserid)
+	return ch.ID, err
+}
+
+func sendDM(dg *discordgo.Session, dmid string, content string) error {
+	_, err := dg.ChannelMessageSend(dmid, content)
+	return err
 }
 
 func pipeMessagesToDiscord(dg *discordgo.Session) {

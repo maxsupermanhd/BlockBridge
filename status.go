@@ -129,6 +129,11 @@ func updateStatus(dg *discordgo.Session, db *pgxpool.Pool) {
 				log.Printf("Found message to edit, new cached status message ID is %q", cachedStatusMessageID)
 			}
 		}
+		if cachedStatusMessageID == "" {
+			log.Printf("Message was not found, will send new one")
+		} else {
+			log.Printf("Found message %s", cachedStatusMessageID)
+		}
 	}
 	log.Println("Status generating")
 	tpschart, tpsheat, profiler, err := getStatusTPS(db)
@@ -161,9 +166,23 @@ func updateStatus(dg *discordgo.Session, db *pgxpool.Pool) {
 		msg, err := dg.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 			Content: content,
 			Files:   files,
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
+							Label:    "Ping when server comes back online",
+							Style:    discordgo.PrimaryButton,
+							CustomID: "pingbackonline_select_time",
+							Emoji: discordgo.ComponentEmoji{
+								Name: "🏓",
+							},
+						},
+					},
+				},
+			},
 		})
 		if err != nil {
-			log.Println(err.Error())
+			log.Printf("Error sending status message: %q", err.Error())
 		} else {
 			cachedStatusMessageID = msg.ID
 			log.Printf("New cached status message ID is %q", cachedStatusMessageID)
@@ -176,9 +195,23 @@ func updateStatus(dg *discordgo.Session, db *pgxpool.Pool) {
 			Attachments: &[]*discordgo.MessageAttachment{},
 			ID:          cachedStatusMessageID,
 			Channel:     channelID,
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
+							Label:    "Ping when server comes back online",
+							Style:    discordgo.PrimaryButton,
+							CustomID: "pingbackonline_select_time",
+							Emoji: discordgo.ComponentEmoji{
+								Name: "🏓",
+							},
+						},
+					},
+				},
+			},
 		})
 		if err != nil {
-			log.Printf("Error editing cached message: %q, clearing cached message id", err.Error())
+			log.Printf("Error editing cached message: %q, clearing cached message ID", err.Error())
 			cachedStatusMessageID = ""
 		}
 	}

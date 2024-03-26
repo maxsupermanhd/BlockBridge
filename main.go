@@ -1,57 +1,35 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"image"
-	"image/png"
 	"io"
 	"log"
 	"net"
 	"os"
 	"time"
 
-	"github.com/Tnze/go-mc/bot"
-	"github.com/Tnze/go-mc/bot/basic"
-	"github.com/Tnze/go-mc/bot/msg"
-	"github.com/Tnze/go-mc/bot/playerlist"
-	"github.com/Tnze/go-mc/data/packetid"
-	mcnet "github.com/Tnze/go-mc/net"
-	pk "github.com/Tnze/go-mc/net/packet"
-	"github.com/Tnze/go-mc/net/queue"
 	"github.com/bwmarrin/discordgo"
+	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/WebChunk/credentials"
+	"github.com/maxsupermanhd/go-vmc/v762/bot"
+	"github.com/maxsupermanhd/go-vmc/v762/bot/basic"
+	"github.com/maxsupermanhd/go-vmc/v762/bot/msg"
+	"github.com/maxsupermanhd/go-vmc/v762/bot/playerlist"
+	"github.com/maxsupermanhd/go-vmc/v762/data/packetid"
+	mcnet "github.com/maxsupermanhd/go-vmc/v762/net"
+	pk "github.com/maxsupermanhd/go-vmc/v762/net/packet"
+	"github.com/maxsupermanhd/go-vmc/v762/net/queue"
 	"github.com/maxsupermanhd/lac"
 	"github.com/natefinch/lumberjack"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 )
 
-// type botConf struct {
-// 	ServerAddress                string
-// 	DiscordToken                 string
-// 	DiscordAppID                 string
-// 	DiscordGuildID               string
-// 	AllowedSlash                 []string
-// 	LogsFilename                 string
-// 	LogsMaxSize                  int
-// 	CredentialsRoot              string
-// 	MCUsername                   string
-// 	ChannelID                    string
-// 	FontPath                     string
-// 	DatabaseFile                 string
-// 	AddPrefix                    bool
-// 	NameOverridesPath            string
-// 	AddTimestamps                bool
-// 	CaptureLagspikes             bool
-// 	StatusChannelID              string
-// 	StatusRefreshIntervalSeconds int
-// }
-
 var (
 	cfg  *lac.Conf
+	db   *pgxpool.Pool
 	dtom = make(chan struct {
 		msg    string
 		userid string
@@ -62,11 +40,18 @@ var (
 )
 
 func init() {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	path := os.Getenv("BLOCKBRIDGE_CONFIG")
 	if path == "" {
 		path = "config.json"
 	}
 	cfg = noerr(lac.FromFileJSON(path))
+	log.SetOutput(io.MultiWriter(os.Stdout, &lumberjack.Logger{
+		Filename: cfg.GetDString("logs/chatlog.log", "LogsFilename"),
+		MaxSize:  cfg.GetDInt(10, "LogsMaxSize"),
+		Compress: true,
+	}))
+	log.Println("Hello world")
 	nameOverridesPath, ok := cfg.GetString("NameOverridesPath")
 	if ok {
 		must(json.Unmarshal(noerr(os.ReadFile(nameOverridesPath)), &nameOverrides))
@@ -77,24 +62,16 @@ func init() {
 		Hinting: font.HintingFull,
 	}))
 	cachedStatusMessageID = cfg.GetDSString("", "CachedStatusMessageID")
+	db = SetupDatabase()
 }
 
 func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	log.SetOutput(io.MultiWriter(os.Stdout, &lumberjack.Logger{
-		Filename: cfg.GetDString("logs/chatlog.log", "LogsFilename"),
-		MaxSize:  cfg.GetDInt(10, "LogsMaxSize"),
-		Compress: true,
-	}))
-	log.Println("Hello world")
-
 	defer close(dtom)
 	defer close(mtod)
 
 	go TabProcessor()
 	defer close(tabactions)
 
-	db := SetupDatabase()
 	defer db.Close()
 
 	dg := OpenDiscord()
@@ -105,76 +82,24 @@ func main() {
 	go pipeMessagesToDiscord(dg)
 	go pipeImportantMessagesToDiscord(dg)
 
+	go pingbackonlineDelivery(dg)
+
 	client := bot.NewClient()
 	credman := credentials.NewMicrosoftCredentialsManager(cfg.GetDString("cmd/auth/", "CredentialsRoot"), "88650e7e-efee-4857-b9a9-cf580a00ef43")
 	pla := basic.NewPlayer(client, botBasicSettings, botBasicEvents)
 	msgman := msg.New(client, pla, playerlist.New(client), botMessageEvents)
 	go pipeMessagesFromDiscord(client, msgman)
 
-	commandHandlers := map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{Content: "Rendering tab..."},
-			})
-			rsp := make(chan interface{})
-			tabactions <- tabaction{
-				op:   "draw",
-				resp: rsp,
-			}
-			buff := bytes.NewBufferString("")
-			must(png.Encode(buff, (<-rsp).(image.Image)))
-			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Files: []*discordgo.File{{
-					Name:        "tab.png",
-					ContentType: "image/png",
-					Reader:      buff,
-				}},
-			})
-		},
-		"lasttpssamples": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{Content: "Getting your data..."},
-			})
-			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Files: []*discordgo.File{{
-					Name:        "tpslog.txt",
-					ContentType: "text/plain",
-					Reader:      GetLastTPSValues(db),
-				}},
-			})
-		},
-		"tps": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{Content: "Rendering graph..."},
-			})
-			tpschart, tpsheat, profiler, err := getStatusTPS(db)
-			if err != nil {
-				cnt := err.Error()
-				s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-					Content: &cnt,
-				})
-				return
-			}
-			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: &profiler,
-				Files: []*discordgo.File{{
-					Name:        "tpsChart.png",
-					ContentType: "image/png",
-					Reader:      tpschart,
-				}, {
-					Name:        "tpsHeat.png",
-					ContentType: "image/png",
-					Reader:      tpsheat,
-				}},
-			})
-		},
-	}
 	dg.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
-			h(s, i)
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
+			if h, ok := commandHandlers[i.ApplicationCommandData().Name]; ok {
+				h(s, i)
+			}
+		case discordgo.InteractionMessageComponent:
+			if h, ok := componentHandlers[i.MessageComponentData().CustomID]; ok {
+				h(s, i)
+			}
 		}
 	})
 	lastTimeUpdate := time.Now()
@@ -237,7 +162,11 @@ func main() {
 			time.Sleep(timeout)
 			continue
 		}
-		client.Auth = *botauth
+		client.Auth = bot.Auth{
+			Name: botauth.Name,
+			UUID: botauth.UUID,
+			AsTk: botauth.AsTk,
+		}
 		log.Println("Connecting to", cfg.GetDString("localhost", "ServerAddress"))
 		dialctx, dialctxcancel := context.WithTimeout(context.Background(), timeout)
 		dialer := net.Dialer{Timeout: timeout, Deadline: time.Now().Add(timeout), KeepAlive: 1 * time.Second}
@@ -258,9 +187,12 @@ func main() {
 			continue
 		}
 		log.Println("Connected, starting HandleGame")
+		firePingbackonlineEvent(pingbackonlineEventTypeConnected)
 		err = client.HandleGame()
 		log.Println("HandleGame exited")
+		firePingbackonlineEvent(pingbackonlineEventTypeDisonnected)
 		// cancelDisconnectTimer <- true
+
 		client.Close()
 		if err != nil {
 			mtod <- "Disconnected: " + err.Error()
