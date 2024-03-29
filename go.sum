@@ -119,6 +119,8 @@ github.com/maxsupermanhd/lac v0.0.0-20230829191428-7f061e40b124 h1:nkPjBpGKrfA7A
 github.com/maxsupermanhd/lac v0.0.0-20230829191428-7f061e40b124/go.mod h1:xQezeA7Tf0qvyr6DuOjmBJTcAyM9RS7cUKxOlnQLZKo=
 github.com/maxsupermanhd/tabdrawer v0.0.0-20240324200623-367eadcd31e7 h1:3srIJ1scldLFym5/T0Xr08Xqx90OTVHf/HQajh4evHQ=
 github.com/maxsupermanhd/tabdrawer v0.0.0-20240324200623-367eadcd31e7/go.mod h1:gfWCmQRvNs1K1B7O5d2sOfgGNp7xE4083tohxH+5xJI=
+github.com/maxsupermanhd/tabdrawer v0.0.0-20240329142157-3db1f856f8a4 h1:yTaSyay2VEHML6I/d2VHo//BJsLGFz6D9uhLRYfNiXk=
+github.com/maxsupermanhd/tabdrawer v0.0.0-20240329142157-3db1f856f8a4/go.mod h1:gfWCmQRvNs1K1B7O5d2sOfgGNp7xE4083tohxH+5xJI=
 github.com/maxsupermanhd/tpsdrawer v0.0.0-20230704174028-c4813e0d4ac0 h1:a/5nh7bV+RbwTTPSqZ8rFCglxRheaJRAv9rDntEarxc=
 github.com/maxsupermanhd/tpsdrawer v0.0.0-20230704174028-c4813e0d4ac0/go.mod h1:kBDyJA+HJvJupb3QrBYGn3Z8+qPGacBkDxk8lxflNKw=
 github.com/mazznoer/colorgrad v0.9.1 h1:MB80JYVndKWSMEM1beNqnuOowWGhoQc3DXWXkFp6JlM=

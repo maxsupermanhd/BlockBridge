@@ -25,7 +25,7 @@ require (
 	github.com/maxsupermanhd/go-mc-ms-auth v0.0.0-20220223195356-5256511fc797
 	github.com/maxsupermanhd/go-vmc/v762 v762.0.0-20231128214918-0e72a4850666
 	github.com/maxsupermanhd/lac v0.0.0-20230829191428-7f061e40b124
-	github.com/maxsupermanhd/tabdrawer v0.0.0-20240324200623-367eadcd31e7
+	github.com/maxsupermanhd/tabdrawer v0.0.0-20240329142157-3db1f856f8a4
 	github.com/mazznoer/colorgrad v0.9.1
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/wcharczuk/go-chart/v2 v2.1.0

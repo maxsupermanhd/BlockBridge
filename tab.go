@@ -153,11 +153,14 @@ func TabProcessor() {
 			if tabtop.ClearString() == "" {
 				tabtop = chat.Text(fmt.Sprintf("[BlockBridge] connected to %s", cfg.GetDString("localhost", "ServerAddress")))
 			}
-			tabtopjson, err := tabtop.MarshalJSON()
-			log.Println(err, string(tabtopjson))
-			tabbottomjson, err := tabbottom.MarshalJSON()
-			log.Println(err, string(tabbottomjson))
-			img := tabdrawer.DrawTab(td, &tabtop, &tabbottom, &tabparams)
+			var img image.Image
+			if cfg.GetDBool(false, "ConvertTabColorCodes") {
+				ctabtop := tabdrawer.ConvertColorCodes(tabtop.Text)
+				ctabbottom := tabdrawer.ConvertColorCodes(tabbottom.Text)
+				img = tabdrawer.DrawTab(td, &ctabtop, &ctabbottom, &tabparams)
+			} else {
+				img = tabdrawer.DrawTab(td, &tabtop, &tabbottom, &tabparams)
+			}
 			r.resp <- img
 		case "setTopBottom":
 			tb := r.data.(struct{ top, bottom chat.Message })
