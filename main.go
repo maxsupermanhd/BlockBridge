@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime/pprof"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -83,6 +84,20 @@ func main() {
 	go pipeImportantMessagesToDiscord(dg)
 
 	go pingbackonlineDelivery(dg)
+
+	if cfg.GetDBool(false, "RecordCPUProfile") {
+		f, err := os.Create("BlockBridge.prof")
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		time.AfterFunc(2*time.Minute, func() {
+			log.Println("Stopping pprof")
+			pprof.StopCPUProfile()
+			f.Close()
+			log.Println("Profile done")
+		})
+	}
 
 	client := bot.NewClient()
 	credman := credentials.NewMicrosoftCredentialsManager(cfg.GetDString("cmd/auth/", "CredentialsRoot"), "88650e7e-efee-4857-b9a9-cf580a00ef43")
