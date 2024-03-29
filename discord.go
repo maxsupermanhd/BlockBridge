@@ -67,6 +67,22 @@ func OpenDiscord() *discordgo.Session {
 	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Println("Discord connection ready")
 	})
+	if cfg.GetDBool(false, "Discord", "DeleteCommands") {
+		log.Println("Fetching guild commands to delete")
+		cmds := noerr(dg.ApplicationCommands(AppID, GuildID))
+		log.Printf("Fetched %d guild commands", len(cmds))
+		for _, v := range cmds {
+			log.Println("Deleting guild command ", v.ID)
+			must(dg.ApplicationCommandDelete(AppID, GuildID, v.ID))
+		}
+		log.Println("Fetching global commands to delete")
+		cmds = noerr(dg.ApplicationCommands(AppID, ""))
+		log.Printf("Fetched %d global commands", len(cmds))
+		for _, v := range cmds {
+			log.Println("Deleting global command ", v.ID)
+			must(dg.ApplicationCommandDelete(AppID, "", v.ID))
+		}
+	}
 	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
 		ID:            "tabCommand",
 		ApplicationID: AppID,
@@ -75,6 +91,15 @@ func OpenDiscord() *discordgo.Session {
 		Type:          discordgo.ChatApplicationCommand,
 		Name:          "tab",
 		Description:   "renders out tab",
+	}))
+	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
+		ID:            "lasttpssamplesCommand",
+		ApplicationID: AppID,
+		GuildID:       GuildID,
+		Version:       "1",
+		Type:          discordgo.ChatApplicationCommand,
+		Name:          "lasttpssamples",
+		Description:   "spews out last tps sample",
 	}))
 	// noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
 	// 	ID:            "tpsCommand",
@@ -85,15 +110,6 @@ func OpenDiscord() *discordgo.Session {
 	// 	Name:          "tps",
 	// 	Description:   "renders out tps chart",
 	// }))
-	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
-		ID:            "lasttpssamples",
-		ApplicationID: AppID,
-		GuildID:       GuildID,
-		Version:       "1",
-		Type:          discordgo.ChatApplicationCommand,
-		Name:          "lasttpssamples",
-		Description:   "spews out last tps sample",
-	}))
 	must(dg.Open())
 	return dg
 }
@@ -176,7 +192,7 @@ var (
 
 	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			iRespondLoading(s, i, "Rendering tab...")
+			// iRespondLoading(s, i, "Rendering tab...")
 			rsp := make(chan interface{})
 			tabactions <- tabaction{
 				op:   "draw",
@@ -184,15 +200,19 @@ var (
 			}
 			buff := bytes.NewBufferString("")
 			must(png.Encode(buff, (<-rsp).(image.Image)))
-			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Files: []*discordgo.File{{
-					Name:        "tab.png",
-					ContentType: "image/png",
-					Reader:      buff,
-				}},
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Flags: discordgo.MessageFlagsEphemeral,
+					Files: []*discordgo.File{{
+						Name:        "tab.png",
+						ContentType: "image/png",
+						Reader:      buff,
+					}},
+				},
 			})
 		},
-		"lasttpssamples": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		"lasttpssamplesCommand": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			iRespondLoading(s, i, "Getting tps data...")
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Files: []*discordgo.File{{
