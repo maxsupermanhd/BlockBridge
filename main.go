@@ -13,6 +13,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/maxsupermanhd/BlockBridge/skincache"
 	"github.com/maxsupermanhd/WebChunk/credentials"
 	"github.com/maxsupermanhd/go-vmc/v762/bot"
 	"github.com/maxsupermanhd/go-vmc/v762/bot/basic"
@@ -31,6 +32,7 @@ import (
 var (
 	cfg  *lac.Conf
 	db   *pgxpool.Pool
+	sc   *skincache.SkinCache
 	dtom = make(chan struct {
 		msg    string
 		userid string
@@ -63,12 +65,15 @@ func init() {
 		Hinting: font.HintingFull,
 	}))
 	cachedStatusMessageID = cfg.GetDSString("", "CachedStatusMessageID")
+	sc = skincache.NewSkinCache(cfg.SubTree("SkinCache"))
 	db = SetupDatabase()
 }
 
 func main() {
 	defer close(dtom)
 	defer close(mtod)
+
+	go sc.Run(make(<-chan struct{}))
 
 	go TabProcessor()
 	defer close(tabactions)

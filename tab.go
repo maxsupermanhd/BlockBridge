@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/png"
 	"log"
-	"net/http"
 
 	"bytes"
 
@@ -65,27 +63,17 @@ func ProcessProps(properties []user.Property, uid uuid.UUID) {
 		if !ok {
 			continue
 		}
-		log.Println("Scheduled head image fetch for ", uuidToString(uid))
-		go func(url string, uid uuid.UUID) {
-			textureresp, err := http.Get(url)
+		sc.GetSkinAsync(uid, texurl, func(i image.Image, err error) {
 			if err != nil {
-				log.Println("Error fetching ", url, err)
+				log.Printf("Failed to get skin: %s", err.Error())
 				return
 			}
-			teximg, err := png.Decode(textureresp.Body)
-			if err != nil {
-				log.Println("Error decoding ", url, err)
-				return
-			}
-			var headimg image.Image
-			headimg, _ = CropImage(teximg, image.Rect(8, 8, 16, 16))
-			log.Println("GET " + url)
 			tabactions <- tabaction{
 				op:   "setTexture",
 				uid:  uid,
-				data: headimg,
+				data: i,
 			}
-		}(texurl, uid)
+		})
 		break
 	}
 }
@@ -100,7 +88,7 @@ func TabProcessor() {
 		case "add":
 			profile := r.data.(GameProfile)
 			tab[r.uid] = PlayerInfo{GameProfile: profile}
-			//ProcessProps(profile.Properties, r.uid)
+			ProcessProps(profile.Properties, r.uid)
 		case "setPing":
 			val := r.data.(int32)
 			p, ok := tab[r.uid]
