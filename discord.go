@@ -201,42 +201,46 @@ var (
 					"Your ping subscription was recorded, if you want to cancel it, select unsubscribe option.", i.Member.User.Username, i.Member.User.ID, i.MessageComponentData().Values[0]))
 			}
 		},
+		"intTab": intRespTab,
 	}
 
 	commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-		"tab": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			// iRespondLoading(s, i, "Rendering tab...")
-			rsp := make(chan interface{})
-			tabactions <- tabaction{
-				op:   "draw",
-				resp: rsp,
-			}
-			buff := bytes.NewBufferString("")
-			must(png.Encode(buff, (<-rsp).(image.Image)))
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Flags: discordgo.MessageFlagsEphemeral,
-					Files: []*discordgo.File{{
-						Name:        "tab.png",
-						ContentType: "image/png",
-						Reader:      buff,
-					}},
-				},
-			})
-		},
-		"lasttpssamples": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			iRespondLoading(s, i, "Getting tps data...")
-			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Files: []*discordgo.File{{
-					Name:        "tpslog.txt",
-					ContentType: "text/plain",
-					Reader:      GetLastTPSValues(db),
-				}},
-			})
-		},
+		"tab":            intRespTab,
+		"lasttpssamples": intRespLastTpsSamples,
 	}
 )
+
+func intRespTab(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	rsp := make(chan interface{})
+	tabactions <- tabaction{
+		op:   "draw",
+		resp: rsp,
+	}
+	buff := bytes.NewBufferString("")
+	must(png.Encode(buff, (<-rsp).(image.Image)))
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+			Files: []*discordgo.File{{
+				Name:        "tab.png",
+				ContentType: "image/png",
+				Reader:      buff,
+			}},
+		},
+	})
+}
+
+func intRespLastTpsSamples(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	iRespondLoading(s, i, "Getting tps data...")
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Files: []*discordgo.File{{
+			Name:        "tpslog.txt",
+			ContentType: "text/plain",
+			Reader:      GetLastTPSValues(db),
+		}},
+	})
+}
 
 func iRespondLoading(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

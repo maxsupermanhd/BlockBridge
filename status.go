@@ -208,6 +208,18 @@ func updateStatus(dg *discordgo.Session, db *pgxpool.Pool) {
 						},
 					},
 				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
+							Label:    "Get tab",
+							Style:    discordgo.PrimaryButton,
+							CustomID: "intTab",
+							Emoji: discordgo.ComponentEmoji{
+								Name: "↔️",
+							},
+						},
+					},
+				},
 			},
 		})
 		if err != nil {
