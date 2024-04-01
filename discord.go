@@ -67,7 +67,16 @@ func OpenDiscord() *discordgo.Session {
 	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		log.Println("Discord connection ready")
 	})
-	if cfg.GetDBool(false, "Discord", "DeleteCommands") {
+	if cfg.GetDBool(false, "Discord", "DeleteGlobalCommands") {
+		log.Println("Fetching global commands to delete")
+		cmds := noerr(dg.ApplicationCommands(AppID, ""))
+		log.Printf("Fetched %d global commands", len(cmds))
+		for _, v := range cmds {
+			log.Println("Deleting global command ", v.ID)
+			must(dg.ApplicationCommandDelete(AppID, "", v.ID))
+		}
+	}
+	if cfg.GetDBool(false, "Discord", "DeleteGuildCommands") {
 		log.Println("Fetching guild commands to delete")
 		cmds := noerr(dg.ApplicationCommands(AppID, GuildID))
 		log.Printf("Fetched %d guild commands", len(cmds))
@@ -75,41 +84,45 @@ func OpenDiscord() *discordgo.Session {
 			log.Println("Deleting guild command ", v.ID)
 			must(dg.ApplicationCommandDelete(AppID, GuildID, v.ID))
 		}
-		log.Println("Fetching global commands to delete")
-		cmds = noerr(dg.ApplicationCommands(AppID, ""))
-		log.Printf("Fetched %d global commands", len(cmds))
-		for _, v := range cmds {
-			log.Println("Deleting global command ", v.ID)
-			must(dg.ApplicationCommandDelete(AppID, "", v.ID))
-		}
 	}
-	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
-		ID:            "tabCommand",
-		ApplicationID: AppID,
-		GuildID:       GuildID,
-		Version:       "1",
-		Type:          discordgo.ChatApplicationCommand,
-		Name:          "tab",
-		Description:   "renders out tab",
-	}))
-	noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
-		ID:            "lasttpssamplesCommand",
-		ApplicationID: AppID,
-		GuildID:       GuildID,
-		Version:       "1",
-		Type:          discordgo.ChatApplicationCommand,
-		Name:          "lasttpssamples",
-		Description:   "spews out last tps sample",
-	}))
-	// noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
-	// 	ID:            "tpsCommand",
-	// 	ApplicationID: AppID,
-	// 	GuildID:       GuildID,
-	// 	Version:       "1",
-	// 	Type:          discordgo.ChatApplicationCommand,
-	// 	Name:          "tps",
-	// 	Description:   "renders out tps chart",
-	// }))
+	if cfg.GetDBool(true, "Discord", "InitGuildCommands") {
+		log.Println("Initializing guild tab command")
+		noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
+			ApplicationID: AppID,
+			GuildID:       GuildID,
+			Version:       "69",
+			Type:          discordgo.ChatApplicationCommand,
+			Name:          "tab",
+			Description:   "renders out tab",
+		}))
+		log.Println("Initializing guild lasttpssamples command")
+		noerr(dg.ApplicationCommandCreate(AppID, GuildID, &discordgo.ApplicationCommand{
+			ApplicationID: AppID,
+			GuildID:       GuildID,
+			Version:       "69",
+			Type:          discordgo.ChatApplicationCommand,
+			Name:          "lasttpssamples",
+			Description:   "spews out last tps samples",
+		}))
+	}
+	if cfg.GetDBool(true, "Discord", "InitGlobalCommands") {
+		log.Println("Initializing global tab command")
+		noerr(dg.ApplicationCommandCreate(AppID, "", &discordgo.ApplicationCommand{
+			ApplicationID: AppID,
+			Version:       "69",
+			Type:          discordgo.ChatApplicationCommand,
+			Name:          "tab",
+			Description:   "renders out tab",
+		}))
+		log.Println("Initializing global lasttpssamples command")
+		noerr(dg.ApplicationCommandCreate(AppID, "", &discordgo.ApplicationCommand{
+			ApplicationID: AppID,
+			Version:       "69",
+			Type:          discordgo.ChatApplicationCommand,
+			Name:          "lasttpssamples",
+			Description:   "spews out last tps samples",
+		}))
+	}
 	must(dg.Open())
 	return dg
 }
@@ -212,7 +225,7 @@ var (
 				},
 			})
 		},
-		"lasttpssamplesCommand": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		"lasttpssamples": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			iRespondLoading(s, i, "Getting tps data...")
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Files: []*discordgo.File{{
@@ -222,39 +235,16 @@ var (
 				}},
 			})
 		},
-		// "tps": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		// 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		// 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		// 		Data: &discordgo.InteractionResponseData{Content: "Rendering graph..."},
-		// 	})
-		// 	tpschart, tpsheat, profiler, err := getStatusTPS(db)
-		// 	if err != nil {
-		// 		cnt := err.Error()
-		// 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		// 			Content: &cnt,
-		// 		})
-		// 		return
-		// 	}
-		// 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		// 		Content: &profiler,
-		// 		Files: []*discordgo.File{{
-		// 			Name:        "tpsChart.png",
-		// 			ContentType: "image/png",
-		// 			Reader:      tpschart,
-		// 		}, {
-		// 			Name:        "tpsHeat.png",
-		// 			ContentType: "image/png",
-		// 			Reader:      tpsheat,
-		// 		}},
-		// 	})
-		// },
 	}
 )
 
 func iRespondLoading(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: content},
+		Data: &discordgo.InteractionResponseData{
+			Flags:   discordgo.MessageFlagsEphemeral,
+			Content: content,
+		},
 	})
 	if err != nil {
 		log.Printf("Failed to respond to interaction with loading: %q", err.Error())
