@@ -73,7 +73,6 @@ func pipeMessagesFromDiscord(client *bot.Client, msgman *msg.Manager) {
 			}
 		}
 		if !allowedsend {
-			mtod <- "no chat for you"
 			continue
 		}
 		if len(m.msg) < 1 {
