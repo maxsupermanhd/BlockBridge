@@ -52,9 +52,9 @@ func getStatusTPS(db *pgxpool.Pool) (io.Reader, io.Reader, string, error) {
 	if len(tpsval) == 0 {
 		return nil, nil, "", errors.New("nothing to draw")
 	}
-	profilerGotData := time.Since(profilerbegin)
+	profilerGotData := time.Since(profilerbegin).Round(time.Second / 10)
 	img := drawTPS(tpsval, tpsn, plc)
-	profilerChartDrawn := time.Since(profilerbegin)
+	profilerChartDrawn := time.Since(profilerbegin).Round(time.Second / 10)
 	t := time.Duration(30 * 24 * time.Hour)
 	tpsval, tpsn, err = GetTPSValues(db, &t)
 	if err != nil {
@@ -88,7 +88,7 @@ func getStatusTPS(db *pgxpool.Pool) (io.Reader, io.Reader, string, error) {
 		BreakMonday: true,
 		MeasureFunc: measurePercentile,
 	})
-	profilerHeatmapDrawn := time.Since(profilerbegin)
+	profilerHeatmapDrawn := time.Since(profilerbegin).Round(time.Second / 10)
 	img2w := bytes.NewBufferString("")
 	err = png.Encode(img2w, img2)
 	if err != nil {
@@ -99,7 +99,7 @@ func getStatusTPS(db *pgxpool.Pool) (io.Reader, io.Reader, string, error) {
 Chart drawn: %s
 Heatmap drawn: %s
 Total: %s
-Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Since(profilerbegin), len(tpsval))
+Samples: %d`, profilerGotData, profilerChartDrawn, profilerHeatmapDrawn, time.Since(profilerbegin).Round(time.Second/10), len(tpsval))
 	return img, img2w, cnt, nil
 }
 
