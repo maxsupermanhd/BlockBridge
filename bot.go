@@ -33,8 +33,12 @@ var (
 			return nil
 		},
 		Disconnect: func(reason chat.Message) error {
-			log.Println("Disconnect: ", reason.String())
-			mtod <- "Disconnect: " + reason.ClearString()
+			r := reason.ClearString()
+			log.Println("Disconnect: ", r)
+			mtod <- "Disconnect: " + r
+			if ds, ok := cfg.GetString("RegularDisconnectPacket"); ok && r != ds {
+				mtods <- "Irregular Disconnect packet"
+			}
 			return nil
 		},
 		HealthChange: nil,
