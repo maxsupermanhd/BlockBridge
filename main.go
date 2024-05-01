@@ -219,6 +219,14 @@ func main() {
 		err = client.HandleGame()
 		log.Println("HandleGame exited")
 		firePingbackonlineEvent(pingbackonlineEventTypeDisonnected)
+		if cfg.GetDSBool(false, "MarkDisconnect") {
+			go func() {
+				_, err = db.Exec(context.Background(), `insert into tps (whenlogged) values ($1)`, time.Now())
+				if err != nil {
+					log.Printf("Error inserting tps value: %s", err.Error())
+				}
+			}()
+		}
 		// cancelDisconnectTimer <- true
 
 		client.Close()
