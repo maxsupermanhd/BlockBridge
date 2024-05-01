@@ -149,18 +149,18 @@ func main() {
 				since = 20
 			}
 			lastTimeUpdate = time.Now()
-			go func(when time.Time, since float32) {
+			go func(when time.Time, since float32, wa int64) {
 				tabresp := make(chan interface{})
 				tabactions <- tabaction{
 					op:   "count",
 					resp: tabresp,
 				}
 				tablen := (<-tabresp).(int)
-				_, err = db.Exec(context.Background(), `insert into tps (whenlogged, tpsvalue, playercount) values ($1, $2, $3)`, when, since, tablen)
+				_, err = db.Exec(context.Background(), `insert into tps (whenlogged, tpsvalue, playercount, worldage) values ($1, $2, $3, $4)`, when, since, tablen, wa)
 				if err != nil {
 					log.Printf("Error inserting tps value: %s", err.Error())
 				}
-			}(time.Now(), since)
+			}(time.Now(), since, int64(worldAge))
 			// prevTPS = since
 			client.Conn.WritePacket(pk.Marshal(packetid.ServerboundSwing, pk.VarInt(0)))
 			return nil

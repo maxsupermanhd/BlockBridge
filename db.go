@@ -14,7 +14,7 @@ import (
 
 func SetupDatabase() *pgxpool.Pool {
 	db := noerr(pgxpool.Connect(context.Background(), cfg.GetDString("", "DatabaseConnection")))
-	noerr(db.Exec(context.Background(), `create table if not exists tps (whenlogged timestamp, tpsvalue float, playercount integer);`))
+	noerr(db.Exec(context.Background(), `create table if not exists tps (whenlogged timestamp, tpsvalue real, playercount bigint, worldage bigint);`))
 	noerr(db.Exec(context.Background(), `create index if not exists tps_index on tps (whenlogged);`))
 	noerr(db.Exec(context.Background(), `create table if not exists backonlinesubs(discorduserid text not null primary key, subtime int not null, dmchanid text not null);`))
 	// noerr(db.Exec(context.Background(), `create table if not exists lagspikes (whenlogged timestamp, tpsprev float, tpscurrent float, players text);`))
