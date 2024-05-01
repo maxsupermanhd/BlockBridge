@@ -204,7 +204,7 @@ func main() {
 			mtod <- "Failed to join server: " + err.Error()
 			if cfg.GetDSBool(false, "PadOffline") {
 				go func() {
-					_, err = db.Exec(context.Background(), `insert into tps (whenlogged, tpsvalue, playercount) values ($1, $2, $3)`, time.Now(), 0, 0)
+					_, err = db.Exec(context.Background(), `insert into tps (whenlogged) values ($1)`, time.Now())
 					if err != nil {
 						log.Printf("Error inserting tps value: %s", err.Error())
 					}
