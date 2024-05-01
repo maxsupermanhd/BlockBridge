@@ -1,6 +1,6 @@
 module github.com/maxsupermanhd/BlockBridge
 
-go 1.18
+go 1.22
 
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
@@ -28,7 +28,7 @@ require (
 	github.com/maxsupermanhd/tabdrawer v0.0.0-20240329142157-3db1f856f8a4
 	github.com/mazznoer/colorgrad v0.9.1
 	github.com/natefinch/lumberjack v2.0.0+incompatible
-	github.com/wcharczuk/go-chart/v2 v2.1.0
+	github.com/wcharczuk/go-chart/v2 v2.1.1
 	golang.org/x/image v0.15.0
 )
 

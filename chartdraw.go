@@ -10,12 +10,35 @@ import (
 	"github.com/wcharczuk/go-chart/v2/drawing"
 )
 
+var (
+	chartTimeFormatter = func(v interface{}) string {
+		if typed, isTyped := v.(float64); isTyped {
+			return time.Unix(0, int64(typed)).Format("02 Jan 15:04")
+		}
+		return ""
+	}
+)
+
 func chartGenGridLines(begin, end, step int, style chart.Style) []chart.GridLine {
 	g := []chart.GridLine{}
 	for i := begin; i <= end; i += step {
 		g = append(g, chart.GridLine{Value: float64(i), Style: style})
 	}
 	return g
+}
+
+func exponentWeightedMovingAverageDropExceptClamp(values []float64, factor float64, exceptVal, exceptReplace, cmin, cmax float64) []float64 {
+	ret := make([]float64, len(values))
+	avg := float64(0.0)
+	for i := 0; i < len(values); i++ {
+		if values[i] == exceptVal {
+			ret[i] = exceptReplace
+			continue
+		}
+		avg = avg + (values[i]-avg)/min(float64(i), factor)
+		ret[i] = max(cmin, min(cmax, avg))
+	}
+	return ret
 }
 
 func drawTPS(keys []time.Time, tpsValues []float64, playercountValues []float64) io.Reader {
@@ -34,6 +57,13 @@ func drawTPS(keys []time.Time, tpsValues []float64, playercountValues []float64)
 		YAxis:   chart.YAxisSecondary,
 	}
 
+	// AvgTPSseries := chart.TimeSeries{
+	// 	XValues: keys,
+	// 	YValues: exponentWeightedMovingAverageDropExceptClamp(tpsValues, 20*60, 0, 0, 0, 20),
+	// 	Name:    "Average TPS",
+	// 	Style:   chart.Style{StrokeWidth: 5},
+	// }
+
 	AvgTPSseries := chart.SMASeries{
 		InnerSeries: TPSseries,
 		Period:      20 * 60,
@@ -43,12 +73,7 @@ func drawTPS(keys []time.Time, tpsValues []float64, playercountValues []float64)
 
 	graph := chart.Chart{
 		XAxis: chart.XAxis{
-			ValueFormatter: func(v interface{}) string {
-				if typed, isTyped := v.(float64); isTyped {
-					return time.Unix(0, int64(typed)).Format("02 Jan 15:04")
-				}
-				return ""
-			},
+			ValueFormatter: chartTimeFormatter,
 		},
 		YAxis: chart.YAxis{
 			ValueFormatter: chart.IntValueFormatter,
