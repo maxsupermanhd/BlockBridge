@@ -45,9 +45,9 @@ var (
 		Death:        nil,
 	}
 	botMessageEvents = msg.EventsHandler{
-		SystemChat: func(c chat.Message, overlay bool) error {
+		SystemChat: func(msg chat.Message, overlay bool) error {
 			if !overlay {
-				mtod <- c.ClearString()
+				mtod <- msg.ClearString()
 			}
 			return nil
 		},
