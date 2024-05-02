@@ -27,7 +27,7 @@ func GetTPSValues(db *pgxpool.Pool, t *time.Duration) ([]time.Time, []float64, e
 	if t != nil {
 		tv = *t
 	}
-	rows, err := db.Query(context.Background(), `select whenlogged, tpsvalue from tps where whenlogged + $1::interval > now() order by whenlogged asc;`, fmt.Sprintf("%d seconds", int(math.Round(tv.Seconds()))))
+	rows, err := db.Query(context.Background(), `select whenlogged, coalesce(tpsvalue, 0) from tps where whenlogged + $1::interval > now() order by whenlogged asc;`, fmt.Sprintf("%d seconds", int(math.Round(tv.Seconds()))))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -69,7 +69,7 @@ func GetTPSPlayercountValues(db *pgxpool.Pool, t *time.Duration) ([]time.Time, [
 	if t != nil {
 		tv = *t
 	}
-	rows, err := db.Query(context.Background(), `select whenlogged, tpsvalue, playercount from tps where whenlogged + $1::interval > now() order by whenlogged asc;`, fmt.Sprintf("%d seconds", int(math.Round(tv.Seconds()))))
+	rows, err := db.Query(context.Background(), `select whenlogged, coalesce(tpsvalue, 0), coalesce(playercount, 0) from tps where whenlogged + $1::interval > now() order by whenlogged asc;`, fmt.Sprintf("%d seconds", int(math.Round(tv.Seconds()))))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -111,7 +111,7 @@ func GetTPSPlayercountValues(db *pgxpool.Pool, t *time.Duration) ([]time.Time, [
 
 func GetLastTPSValues(db *pgxpool.Pool) *bytes.Buffer {
 	buff := bytes.NewBufferString("")
-	rows := noerr(db.Query(context.Background(), `select whenlogged, tpsvalue from tps order by whenlogged desc limit 500;`))
+	rows := noerr(db.Query(context.Background(), `select whenlogged, coalesce(tpsvalue, 0) from tps order by whenlogged desc limit 500;`))
 	fmt.Fprint(buff, "Last 500 TPS samples:\n")
 	fmt.Fprint(buff, "Timestamp (UTC), TPS\n")
 	for rows.Next() {
@@ -129,7 +129,7 @@ func GetLastTPSValues(db *pgxpool.Pool) *bytes.Buffer {
 }
 
 func getAvgPlayercountLong(db *pgxpool.Pool) ([]time.Time, []float64, error) {
-	rows, err := db.Query(context.Background(), `select s+'5 minutes'::interval, avg(playercount) from generate_series(now() - '14 days'::interval, now(), '10 minutes') as s, tps where whenlogged >= s and whenlogged <= s+'10 minutes'::interval group by s+'5 minutes'::interval order by s+'5 minutes'::interval;`)
+	rows, err := db.Query(context.Background(), `select s+'5 minutes'::interval, avg(coalesce(playercount, 0)) from generate_series(now() - '14 days'::interval, now(), '10 minutes') as s, tps where whenlogged >= s and whenlogged <= s+'10 minutes'::interval group by s+'5 minutes'::interval order by s+'5 minutes'::interval;`)
 	if err != nil {
 		return nil, nil, err
 	}
