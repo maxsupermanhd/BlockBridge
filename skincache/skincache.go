@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,9 +45,32 @@ func (c *SkinCache) Run(exitchan <-chan struct{}) {
 	}
 }
 
+func (c *SkinCache) getFolder() string {
+	return c.cfg.GetDString("SkinCache", "Root")
+}
+
+func (c *SkinCache) GetCachedSkinsCountSize() (int64, int64, error) {
+	d, err := os.ReadDir(c.getFolder())
+	if err != nil {
+		return 0, 0, err
+	}
+	size := int64(0)
+	count := int64(0)
+	for i := range d {
+		if strings.HasSuffix(d[i].Name(), ".png") {
+			n, err := d[i].Info()
+			if err != nil {
+				return count, size, err
+			}
+			count++
+			size += n.Size()
+		}
+	}
+	return count, size, err
+}
+
 func (c *SkinCache) getPath(id uuid.UUID) string {
-	root := c.cfg.GetDString("SkinCache", "Root")
-	return path.Join(root, uuidToString(id)+".png")
+	return path.Join(c.getFolder(), uuidToString(id)+".png")
 }
 
 func getImageModTime(path string) (time.Time, error) {

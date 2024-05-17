@@ -70,6 +70,9 @@ func init() {
 }
 
 func main() {
+
+	go telemetryStartHttpServer(cfg.SubTree("Telemetry"))
+
 	defer close(dtom)
 	defer close(mtod)
 
