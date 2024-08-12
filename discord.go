@@ -325,13 +325,14 @@ func pipeImportantMessagesToDiscord(dg *discordgo.Session) {
 			log.Println("ChannelID is not set, not sending ping message")
 			continue
 		}
+		log.Println("Ping event: ", msg)
 		id := cfg.GetDString("343418440423309314", "ImportantPingID")
 		_, err := dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
-			Content: "<@" + id + ">",
-			Embed: &discordgo.MessageEmbed{
-				Type:  discordgo.EmbedTypeRich,
-				Title: msg,
-			},
+			Embeds: []*discordgo.MessageEmbed{{
+				Title:       "<@" + id + ">",
+				Description: msg,
+				Color:       392960,
+			}},
 			AllowedMentions: &discordgo.MessageAllowedMentions{
 				Users: []string{id},
 			},
