@@ -328,8 +328,9 @@ func pipeImportantMessagesToDiscord(dg *discordgo.Session) {
 		log.Println("Ping event: ", msg)
 		id := cfg.GetDString("343418440423309314", "ImportantPingID")
 		_, err := dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
+			Content: "<@" + id + ">",
 			Embeds: []*discordgo.MessageEmbed{{
-				Title:       "<@" + id + ">",
+				Title:       "1fd84914aba013d0f57915b3024dbb623a3e68fd2ec2ed4200233d51e1e91e03",
 				Description: msg,
 				Color:       392960,
 			}},
