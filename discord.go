@@ -299,7 +299,15 @@ func pipeMessagesToDiscord(dg *discordgo.Session) {
 			if time.Since(lastMessage).Seconds() > 2.5*float64(time.Second) {
 				cid, ok := cfg.GetString("ChannelID")
 				if ok {
-					dg.ChannelMessageSend(cid, lastAggregate)
+					dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
+						Content: lastAggregate,
+						AllowedMentions: &discordgo.MessageAllowedMentions{
+							Parse:       []discordgo.AllowedMentionType{},
+							Roles:       []string{},
+							Users:       []string{},
+							RepliedUser: false,
+						},
+					})
 				}
 				lastAggregate = ""
 				lastMessage = time.Now()
@@ -310,7 +318,15 @@ func pipeMessagesToDiscord(dg *discordgo.Session) {
 			}
 			cid, ok := cfg.GetString("ChannelID")
 			if ok {
-				dg.ChannelMessageSend(cid, lastAggregate)
+				dg.ChannelMessageSendComplex(cid, &discordgo.MessageSend{
+					Content: lastAggregate,
+					AllowedMentions: &discordgo.MessageAllowedMentions{
+						Parse:       []discordgo.AllowedMentionType{},
+						Roles:       []string{},
+						Users:       []string{},
+						RepliedUser: false,
+					},
+				})
 			}
 			lastAggregate = ""
 			lastMessage = time.Now()
