@@ -10,14 +10,15 @@ import (
 	"bytes"
 
 	"github.com/google/uuid"
-	"github.com/maxsupermanhd/go-vmc/v762/bot"
-	"github.com/maxsupermanhd/go-vmc/v762/chat"
-	"github.com/maxsupermanhd/go-vmc/v762/chat/sign"
-	"github.com/maxsupermanhd/go-vmc/v762/data/packetid"
+	chat762 "github.com/maxsupermanhd/go-vmc/v762/chat"
+	"github.com/maxsupermanhd/go-vmc/v767/bot"
+	"github.com/maxsupermanhd/go-vmc/v767/chat"
+	"github.com/maxsupermanhd/go-vmc/v767/chat/sign"
+	"github.com/maxsupermanhd/go-vmc/v767/data/packetid"
 	"github.com/maxsupermanhd/tabdrawer"
 
-	pk "github.com/maxsupermanhd/go-vmc/v762/net/packet"
-	"github.com/maxsupermanhd/go-vmc/v762/yggdrasil/user"
+	pk "github.com/maxsupermanhd/go-vmc/v767/net/packet"
+	"github.com/maxsupermanhd/go-vmc/v767/yggdrasil/user"
 )
 
 var (
@@ -26,10 +27,13 @@ var (
 		ColumnSpacing:       8,
 		RowSpacing:          1,
 		RowAdditionalHeight: 2,
-		OverridePlayerName: func(u uuid.UUID) *chat.Message {
+		OverridePlayerName: func(u uuid.UUID) *chat762.Message {
 			v, ok := nameOverrides[u.String()]
 			if ok {
-				return &v
+				vb, _ := v.MarshalJSON()
+				var vr chat762.Message
+				vr.UnmarshalJSON(vb)
+				return &vr
 			}
 			return nil
 		},
@@ -129,9 +133,10 @@ func TabProcessor() {
 				p := tabdrawer.TabPlayer{Ping: int(v.Latency)}
 				p.HeadTexture = texturecache[k]
 				if v.DisplayName != nil {
-					p.Name = *v.DisplayName
+					dn, _ := v.DisplayName.MarshalJSON()
+					json.Unmarshal(dn, &p.Name)
 				} else {
-					p.Name = chat.Text(v.Name)
+					p.Name = chat762.Text(v.Name)
 				}
 				td[k] = p
 			}
@@ -147,7 +152,12 @@ func TabProcessor() {
 				ctabbottom := tabdrawer.ConvertColorCodes(tabbottom.Text)
 				img = tabdrawer.DrawTab(td, &ctabtop, &ctabbottom, &tabparams)
 			} else {
-				img = tabdrawer.DrawTab(td, &tabtop, &tabbottom, &tabparams)
+				tbt, _ := tabtop.MarshalJSON()
+				tbb, _ := tabbottom.MarshalJSON()
+				var tt, tb chat762.Message
+				tt.UnmarshalJSON(tbt)
+				tb.UnmarshalJSON(tbb)
+				img = tabdrawer.DrawTab(td, &tt, &tb, &tabparams)
 			}
 			r.resp <- img
 		case "setTopBottom":

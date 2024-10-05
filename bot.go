@@ -2,16 +2,14 @@ package main
 
 import (
 	"log"
-	"math/rand"
 	"strings"
-	"time"
 
-	"github.com/maxsupermanhd/go-vmc/v762/bot"
-	"github.com/maxsupermanhd/go-vmc/v762/bot/basic"
-	"github.com/maxsupermanhd/go-vmc/v762/bot/msg"
-	"github.com/maxsupermanhd/go-vmc/v762/chat"
-	"github.com/maxsupermanhd/go-vmc/v762/data/packetid"
-	pk "github.com/maxsupermanhd/go-vmc/v762/net/packet"
+	"github.com/maxsupermanhd/go-vmc/v767/bot"
+	"github.com/maxsupermanhd/go-vmc/v767/bot/basic"
+	"github.com/maxsupermanhd/go-vmc/v767/bot/msg"
+	"github.com/maxsupermanhd/go-vmc/v767/chat"
+	"github.com/maxsupermanhd/go-vmc/v767/data/packetid"
+	pk "github.com/maxsupermanhd/go-vmc/v767/net/packet"
 )
 
 var (
@@ -45,12 +43,22 @@ var (
 		Death:        nil,
 	}
 	botMessageEvents = msg.EventsHandler{
-		SystemChat: func(msg chat.Message, overlay bool) error {
-			if !overlay {
-				mtod <- msg.ClearString()
-			}
-			return nil
-		},
+		// TODO
+		// SystemChat: func(msg chat.Message, overlay bool) error {
+		// 	if msg.ClearString() == "*** Server maintenance in 1 minute ***" {
+		// 		dtom <- struct {
+		// 			msg    string
+		// 			userid string
+		// 		}{
+		// 			msg:    "Subscribe for a ping in my discord server to get automatically notified when server comes back online",
+		// 			userid: "feedback",
+		// 		}
+		// 	}
+		// 	if !overlay {
+		// 		mtod <- msg.ClearString()
+		// 	}
+		// 	return nil
+		// },
 		PlayerChatMessage: func(msg chat.Message, _ bool) error {
 			mtod <- msg.ClearString()
 			return nil
@@ -74,6 +82,9 @@ func pipeMessagesFromDiscord(client *bot.Client, msgman *msg.Manager) {
 					log.Println("message from ", m.userid, " was whitelisted")
 					break
 				}
+			}
+			if m.userid == "feedback" {
+				allowedsend = true
 			}
 		}
 		if !allowedsend {
@@ -101,12 +112,7 @@ func pipeMessagesFromDiscord(client *bot.Client, msgman *msg.Manager) {
 			if allowedsend {
 				// log.Println([]byte(m[1:]))
 				client.Conn.WritePacket(pk.Marshal(packetid.ServerboundChatCommand,
-					pk.String(m.msg[1:]),            // command
-					pk.Long(time.Now().UnixMilli()), // instant
-					pk.Long(rand.Int63()),           // salt
-					pk.VarInt(0),                    // last seen
-					pk.VarInt(0),                    // msgcount?
-					pk.NewFixedBitSet(20),           // ack?
+					pk.String(m.msg[1:]),
 				))
 			}
 		} else {

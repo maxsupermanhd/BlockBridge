@@ -23,7 +23,7 @@ require (
 	github.com/jackc/pgx/v4 v4.18.1
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/maxsupermanhd/go-mc-ms-auth v0.0.0-20220223195356-5256511fc797
-	github.com/maxsupermanhd/go-vmc/v762 v762.0.0-20231128214918-0e72a4850666
+	github.com/maxsupermanhd/go-vmc/v767 v767.0.0-20240814201822-2fbab1c49213
 	github.com/maxsupermanhd/lac v0.0.0-20230829191428-7f061e40b124
 	github.com/maxsupermanhd/tabdrawer v0.0.0-20240329142157-3db1f856f8a4
 	github.com/mazznoer/colorgrad v0.9.1
@@ -33,7 +33,8 @@ require (
 )
 
 require (
-	github.com/Tnze/go-mc v1.20.1 // indirect
+	github.com/Tnze/go-mc v1.19.2 // indirect
+	github.com/blend/go-sdk v1.20240719.1 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.14.0 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
@@ -42,6 +43,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/pgtype v1.14.0 // indirect
 	github.com/jackc/puddle v1.3.0 // indirect
+	github.com/maxsupermanhd/go-vmc/v762 v762.0.0-20231128214918-0e72a4850666 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	golang.org/x/net v0.22.0 // indirect
 )

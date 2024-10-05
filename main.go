@@ -15,14 +15,15 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/maxsupermanhd/BlockBridge/skincache"
 	"github.com/maxsupermanhd/WebChunk/credentials"
-	"github.com/maxsupermanhd/go-vmc/v762/bot"
-	"github.com/maxsupermanhd/go-vmc/v762/bot/basic"
-	"github.com/maxsupermanhd/go-vmc/v762/bot/msg"
-	"github.com/maxsupermanhd/go-vmc/v762/bot/playerlist"
-	"github.com/maxsupermanhd/go-vmc/v762/data/packetid"
-	mcnet "github.com/maxsupermanhd/go-vmc/v762/net"
-	pk "github.com/maxsupermanhd/go-vmc/v762/net/packet"
-	"github.com/maxsupermanhd/go-vmc/v762/net/queue"
+	"github.com/maxsupermanhd/go-vmc/v767/bot"
+	"github.com/maxsupermanhd/go-vmc/v767/bot/basic"
+	"github.com/maxsupermanhd/go-vmc/v767/bot/msg"
+	"github.com/maxsupermanhd/go-vmc/v767/bot/playerlist"
+	"github.com/maxsupermanhd/go-vmc/v767/chat"
+	"github.com/maxsupermanhd/go-vmc/v767/data/packetid"
+	mcnet "github.com/maxsupermanhd/go-vmc/v767/net"
+	pk "github.com/maxsupermanhd/go-vmc/v767/net/packet"
+	"github.com/maxsupermanhd/go-vmc/v767/net/queue"
 	"github.com/maxsupermanhd/lac"
 	"github.com/natefinch/lumberjack"
 	"golang.org/x/image/font"
@@ -124,6 +125,26 @@ func main() {
 				h(s, i)
 			}
 		}
+	})
+
+	client.Events.AddListener(bot.PacketHandler{
+		ID:       packetid.ClientboundSystemChat,
+		Priority: 20,
+		F: func(p pk.Packet) error {
+			var (
+				content   chat.Message
+				isOverlay pk.Boolean
+			)
+			err := p.Scan(&content, &isOverlay)
+			if err != nil {
+				log.Printf("Failed to scan system chat: %s", err.Error())
+				return nil
+			}
+			if !isOverlay {
+				mtod <- content.ClearString()
+			}
+			return nil
+		},
 	})
 	lastTimeUpdate := time.Now()
 	// prevTPS := float32(-1)
