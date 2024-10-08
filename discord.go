@@ -6,6 +6,8 @@ import (
 	"image"
 	"image/png"
 	"log"
+	"net/http"
+	"net/url"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -62,6 +64,16 @@ func OpenDiscord() *discordgo.Session {
 		log.Fatal("AppID was not found in config")
 	}
 	dg := noerr(discordgo.New("Bot " + DiscordToken))
+	proxyUrl := cfg.GetDString("", "Discord", "Proxy")
+	if proxyUrl != "" {
+		prUrl, err := url.Parse(proxyUrl)
+		if err != nil {
+			log.Printf("Discord proxy url is invalid: %s", err.Error())
+		} else {
+			dg.Client.Transport = &http.Transport{Proxy: http.ProxyURL(prUrl)}
+			dg.Dialer.Proxy = http.ProxyURL(prUrl)
+		}
+	}
 	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
 	dg.AddHandler(handleDiscordMessage)
 	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
