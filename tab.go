@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"strings"
 
 	"bytes"
 
@@ -67,7 +68,7 @@ func ProcessProps(properties []user.Property, uid uuid.UUID) {
 		if !ok {
 			continue
 		}
-		sc.GetSkinAsync(uid, texurl, func(i image.Image, err error) {
+		sc.GetSkinAsync(uid, strings.Replace(texurl, `http://textures.minecraft.net`, `https://textures.minecraft.net`, 1), func(i image.Image, err error) {
 			if err != nil {
 				log.Printf("Failed to get skin: %s", err.Error())
 				return
